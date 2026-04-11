@@ -5,7 +5,25 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass }     from 'three/addons/postprocessing/ShaderPass.js';
 import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
 
-import { INITIAL_CAMERA_DISTANCE, INITIAL_CAMERA_ELEVATION, INITIAL_CAMERA_AZIMUTH, BLOOM_LAYER, CAMERA_PRESETS, CAM_LERP_DUR } from './constants.js';
+import {
+    INITIAL_CAMERA_DISTANCE,
+    INITIAL_CAMERA_ELEVATION,
+    INITIAL_CAMERA_AZIMUTH,
+    BLOOM_LAYER,
+    CAMERA_PRESETS,
+    CAM_LERP_DUR,
+    VISUAL_MODES,
+    BASE_GALAXY_COUNT,
+    BASE_STAR_COUNT,
+    BASE_SCATTER_COUNT,
+    BASE_HALO_COUNT,
+    BASE_NEBULA_COUNT,
+    N_GALAXY,
+    N_STARS,
+    N_SCATTER,
+    N_HALO,
+    N_NEBULA,
+} from './constants.js';
 import { state } from './state.js';
 
 // ── Canvas & scene ──
@@ -15,7 +33,7 @@ export const camera   = new THREE.PerspectiveCamera(60, window.innerWidth / wind
 export const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true });
 
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(1);
 scene.background = new THREE.Color(0x000000);
 
 export const BEAM_TILT_AXIS = new THREE.Vector3(1, 0, 1).normalize();
@@ -73,13 +91,46 @@ const finalPass = new ShaderPass(new THREE.ShaderMaterial({
 }), 'baseTexture');
 finalComposer.addPass(finalPass);
 
+function getVisualModeConfig() {
+    return VISUAL_MODES[state.visualMode] || VISUAL_MODES['1080p'];
+}
+
+function setComposerResolution(composer, cssW, cssH, pixelRatio) {
+    if (typeof composer.setPixelRatio === 'function') {
+        composer.setPixelRatio(pixelRatio);
+        composer.setSize(cssW, cssH);
+        return;
+    }
+    composer.setSize(Math.round(cssW * pixelRatio), Math.round(cssH * pixelRatio));
+}
+
+function applyScaledCounts(baseGalaxy, baseStars, baseScatter, baseHalo, baseNebula) {
+    const density = getVisualModeConfig().densityMultiplier;
+    state.baseGalaxyCount    = Math.min(N_GALAXY,  Math.floor(baseGalaxy  * density));
+    state.activeStarCount    = Math.min(N_STARS,   Math.floor(baseStars   * density));
+    state.activeScatterCount = Math.min(N_SCATTER, Math.floor(baseScatter * density));
+    state.activeHaloCount    = Math.min(N_HALO,    Math.floor(baseHalo    * density));
+    state.activeNebulaCount  = Math.min(N_NEBULA,  Math.floor(baseNebula  * density));
+}
+
 // ── Pixel ratio helper ──
 export function setRendererPixelRatioFromPreset() {
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, state.renderPixelRatioCap));
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
-    bloomComposer.setSize(window.innerWidth, window.innerHeight);
-    finalComposer.setSize(window.innerWidth, window.innerHeight);
-    bloomPass.resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+    const cssW = Math.max(1, window.innerWidth);
+    const cssH = Math.max(1, window.innerHeight);
+    const mode = getVisualModeConfig();
+    const targetPixels = mode.width * mode.height;
+    const desiredPixelRatio = Math.min(4, Math.max(0.5, Math.sqrt(targetPixels / (cssW * cssH))));
+
+    state.liveRenderPixelRatio = desiredPixelRatio;
+
+    renderer.setPixelRatio(desiredPixelRatio);
+    renderer.setSize(cssW, cssH, false);
+    setComposerResolution(bloomComposer, cssW, cssH, desiredPixelRatio);
+    setComposerResolution(finalComposer, cssW, cssH, desiredPixelRatio);
+    bloomPass.resolution = new THREE.Vector2(
+        Math.round(cssW * desiredPixelRatio),
+        Math.round(cssH * desiredPixelRatio)
+    );
 }
 
 // ── Camera preset transition ──
@@ -103,30 +154,33 @@ export function setCameraFromPreset(name) {
 export function applyPerformancePreset(preset, galaxy) {
     state.performancePreset = preset;
     if (preset === 'quality') {
-        state.baseGalaxyCount   = 75000;
-        state.activeStarCount   = 20000;
-        state.activeScatterCount = 10000;
-        state.activeHaloCount   = 12000;
-        state.activeNebulaCount = 4500;
-        state.renderPixelRatioCap = 2.0;
+        applyScaledCounts(
+            BASE_GALAXY_COUNT,
+            BASE_STAR_COUNT,
+            BASE_SCATTER_COUNT,
+            BASE_HALO_COUNT,
+            BASE_NEBULA_COUNT,
+        );
         bloomPass.radius    = 0.58;
         bloomPass.threshold = 0.22;
     } else if (preset === 'performance') {
-        state.baseGalaxyCount   = Math.floor(75000 * 0.52);
-        state.activeStarCount   = Math.floor(20000 * 0.50);
-        state.activeScatterCount = Math.floor(10000 * 0.60);
-        state.activeHaloCount   = Math.floor(12000 * 0.55);
-        state.activeNebulaCount = Math.floor(4500  * 0.55);
-        state.renderPixelRatioCap = 1.0;
+        applyScaledCounts(
+            Math.floor(BASE_GALAXY_COUNT  * 0.52),
+            Math.floor(BASE_STAR_COUNT    * 0.50),
+            Math.floor(BASE_SCATTER_COUNT * 0.60),
+            Math.floor(BASE_HALO_COUNT    * 0.55),
+            Math.floor(BASE_NEBULA_COUNT  * 0.55),
+        );
         bloomPass.radius    = 0.42;
         bloomPass.threshold = 0.32;
     } else {
-        state.baseGalaxyCount   = Math.floor(75000 * 0.82);
-        state.activeStarCount   = Math.floor(20000 * 0.78);
-        state.activeScatterCount = Math.floor(10000 * 0.82);
-        state.activeHaloCount   = Math.floor(12000 * 0.82);
-        state.activeNebulaCount = Math.floor(4500  * 0.80);
-        state.renderPixelRatioCap = 1.5;
+        applyScaledCounts(
+            Math.floor(BASE_GALAXY_COUNT  * 0.82),
+            Math.floor(BASE_STAR_COUNT    * 0.78),
+            Math.floor(BASE_SCATTER_COUNT * 0.82),
+            Math.floor(BASE_HALO_COUNT    * 0.82),
+            Math.floor(BASE_NEBULA_COUNT  * 0.80),
+        );
         bloomPass.radius    = 0.55;
         bloomPass.threshold = 0.25;
     }
@@ -136,12 +190,9 @@ export function applyPerformancePreset(preset, galaxy) {
 
 // ── Window resize ──
 window.addEventListener('resize', () => {
-    const w = window.innerWidth, h = window.innerHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-    bloomComposer.setSize(w, h);
-    finalComposer.setSize(w, h);
-    bloomPass.resolution = new THREE.Vector2(w, h);
     setRendererPixelRatioFromPreset();
 });

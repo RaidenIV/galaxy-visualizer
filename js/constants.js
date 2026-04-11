@@ -2,11 +2,22 @@
 // CONSTANTS — pure, never mutated
 // ============================================================
 
-export const N_GALAXY  = 75000;
-export const N_STARS   = 20000;
-export const N_SCATTER = 10000;
-export const N_HALO    = 12000;
-export const N_NEBULA  = 4500;
+export const BASE_GALAXY_COUNT  = 75000;
+export const BASE_STAR_COUNT    = 20000;
+export const BASE_SCATTER_COUNT = 10000;
+export const BASE_HALO_COUNT    = 12000;
+export const BASE_NEBULA_COUNT  = 4500;
+
+export const VISUAL_MODES = {
+    '1080p': { label: '1080p', width: 1920, height: 1080, densityMultiplier: 1.0 },
+    '4k':    { label: '4K',    width: 3840, height: 2160, densityMultiplier: 4.0 },
+};
+
+export const N_GALAXY  = Math.floor(BASE_GALAXY_COUNT  * VISUAL_MODES['4k'].densityMultiplier);
+export const N_STARS   = Math.floor(BASE_STAR_COUNT    * VISUAL_MODES['4k'].densityMultiplier);
+export const N_SCATTER = Math.floor(BASE_SCATTER_COUNT * VISUAL_MODES['4k'].densityMultiplier);
+export const N_HALO    = Math.floor(BASE_HALO_COUNT    * VISUAL_MODES['4k'].densityMultiplier);
+export const N_NEBULA  = Math.floor(BASE_NEBULA_COUNT  * VISUAL_MODES['4k'].densityMultiplier);
 
 export const BLOOM_LAYER = 1;
 export const CORE_CENTER_BLOOM_REDUCTION = 0.5;

@@ -15,9 +15,7 @@ const frameBtn       = document.getElementById('frame-btn');
 const frameSizeSelect= document.getElementById('frame-size-select');
 const formatSelect   = document.getElementById('record-format-select');
 const resSelect      = document.getElementById('record-resolution-select');
-const orientSelect   = document.getElementById('record-orientation-select');
 const bitrateSelect  = document.getElementById('record-bitrate-select');
-const orientRow      = document.getElementById('record-orientation-row');
 const bitrateRow     = document.getElementById('record-bitrate-row');
 
 // ── Offscreen recording pipeline (shared by MP4 and WebM) ──
@@ -105,13 +103,10 @@ function renderOffscreen() {
 
 // ── Dimensions ──
 function getRecordingDimensions() {
-    const res    = resSelect    ? resSelect.value    : 'current';
-    const orient = orientSelect ? orientSelect.value : 'landscape';
-    if (res === 'current') return { w: Math.floor(window.innerWidth), h: Math.floor(window.innerHeight) };
-    let w = res === '4k' ? 3840 : 1920;
-    let h = res === '4k' ? 2160 : 1080;
-    if (orient === 'portrait') [w, h] = [h, w];
-    return { w, h };
+    const mode = state.visualMode === '4k' ? '4k' : '1080p';
+    return mode === '4k'
+        ? { w: 3840, h: 2160 }
+        : { w: 1920, h: 1080 };
 }
 
 function pickAvcCodec(w, h) {
@@ -377,19 +372,26 @@ frameBtn.addEventListener('click', async () => {
 });
 
 // ── UI sync ──
-function syncOrientRow() {
-    if (orientRow) orientRow.style.display = (resSelect && resSelect.value === 'current') ? 'none' : '';
+function syncCaptureModeUI() {
+    const label = state.visualMode === '4k' ? '4K' : '1080p';
+    if (resSelect) {
+        resSelect.disabled = true;
+        resSelect.value = state.visualMode === '4k' ? '4k' : '1080p';
+    }
+    const valueEl = document.getElementById('record-resolution-value');
+    if (valueEl) valueEl.textContent = label;
 }
-if (resSelect) { resSelect.addEventListener('change', syncOrientRow); syncOrientRow(); }
+window.addEventListener('galaxy-visual-mode-change', syncCaptureModeUI);
+syncCaptureModeUI();
 
 function syncFormatUI() {
     const isMp4 = !formatSelect || formatSelect.value === 'mp4';
     if (bitrateRow) bitrateRow.style.display = isMp4 ? '' : 'none';
     const noteEl = document.getElementById('capture-note');
     if (noteEl) noteEl.textContent = isMp4
-        ? 'MP4: Chrome/Edge · H.264 · audio included if playing'
-        : 'WebM: all browsers · VP9 · includes audio';
-    syncOrientRow();
+        ? 'MP4: Chrome/Edge · H.264 · exports at the current visual mode'
+        : 'WebM: all browsers · VP9 · exports at the current visual mode';
+    syncCaptureModeUI();
 }
 if (formatSelect) { formatSelect.addEventListener('change', syncFormatUI); syncFormatUI(); }
 

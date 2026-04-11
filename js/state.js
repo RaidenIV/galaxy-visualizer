@@ -28,6 +28,8 @@ export const state = {
 
     // Performance & rendering
     performancePreset:  'quality',
+    visualMode:         '1080p',
+    liveRenderPixelRatio: 1.0,
     baseGalaxyCount:    75000,
     activeGalaxyCount:  75000,
     activeStarCount:    20000,

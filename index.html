@@ -73,6 +73,14 @@
                         <input type="range" id="galaxy-stars-slider" min="10" max="200" value="100">
                     </div>
                     <div class="slider-container">
+                        <div class="slider-label"><span>Visual Mode</span><span class="slider-value" id="visual-mode-value">1080p</span></div>
+                        <select id="visual-mode-select">
+                            <option value="1080p" selected>1080p</option>
+                            <option value="4k">4K</option>
+                        </select>
+                    </div>
+                    <div class="mini-note" style="margin-top:2px;margin-bottom:10px;">4K mode raises the live render resolution and particle counts so 4K exports match the real-time view more closely.</div>
+                    <div class="slider-container">
                         <div class="slider-label"><span>Auto Rotate</span><span class="slider-value" id="auto-rotate-value">Off</span></div>
                         <label class="toggle-control">
                             <input type="checkbox" id="auto-rotate-toggle" class="toggle-input">
@@ -171,18 +179,10 @@
                         </select>
                     </div>
                     <div class="slider-container">
-                        <div class="slider-label"><span>Resolution</span><span class="slider-value" id="record-resolution-value">1080p</span></div>
-                        <select id="record-resolution-select">
-                            <option value="current">Current Window</option>
+                        <div class="slider-label"><span>Visual Mode</span><span class="slider-value" id="record-resolution-value">1080p</span></div>
+                        <select id="record-resolution-select" disabled>
                             <option value="1080p" selected>1080p</option>
                             <option value="4k">4K</option>
-                        </select>
-                    </div>
-                    <div class="slider-container" id="record-orientation-row">
-                        <div class="slider-label"><span>Orientation</span><span class="slider-value" id="record-orientation-value">Landscape</span></div>
-                        <select id="record-orientation-select">
-                            <option value="landscape" selected>Landscape</option>
-                            <option value="portrait">Portrait</option>
                         </select>
                     </div>
                     <div class="slider-container" id="record-bitrate-row">
