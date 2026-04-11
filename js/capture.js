@@ -25,12 +25,15 @@ let savedPxRatio = null;
 let webmRecorder = null;
 let webmChunks   = [];
 
-// ── MP4 state ──
+// ── MP4 / Web Codecs state ──
 let mp4Muxer      = null;
-let mp4Encoder    = null;
+let mp4Video      = null;   // VideoEncoder
+let mp4Audio      = null;   // AudioEncoder
+let scriptNode    = null;   // ScriptProcessorNode
 let mp4FrameCount = 0;
 let mp4StartTime  = null;
 let mp4LastTime   = null;
+let audioTimestampUs = 0;
 export let isMP4Recording = false;
 
 // ── Lazy-load mp4-muxer ──
@@ -42,8 +45,8 @@ async function loadMp4Muxer() {
 
 // ── Dimensions ──
 function getRecordingDimensions() {
-    const res    = resSelect  ? resSelect.value  : 'current';
-    const orient = orientSelect ? orientSelect.value : 'landscape';
+    const res    = resSelect   ? resSelect.value   : 'current';
+    const orient = orientSelect? orientSelect.value : 'landscape';
     if (res === 'current') return { w: Math.floor(window.innerWidth), h: Math.floor(window.innerHeight) };
     let w = res === '4k' ? 3840 : 1920;
     let h = res === '4k' ? 2160 : 1080;
@@ -61,8 +64,13 @@ function beginResolutionOverride(w, h) {
     savedSize    = new THREE.Vector2();
     renderer.getSize(savedSize);
     savedAspect  = camera.aspect;
+
     renderer.setPixelRatio(1);
-    renderer.setSize(w, h, false); // false = keep CSS size, only change canvas pixel dims
+    renderer.setSize(w, h, false);
+    // Explicitly set canvas pixel dimensions — belt-and-suspenders for Three.js r128
+    renderer.domElement.width  = w;
+    renderer.domElement.height = h;
+
     bloomComposer.setSize(w, h);
     finalComposer.setSize(w, h);
     bloomPass.resolution = new THREE.Vector2(w, h);
@@ -74,6 +82,8 @@ function endResolutionOverride() {
     if (!savedSize) return;
     renderer.setPixelRatio(savedPxRatio);
     renderer.setSize(savedSize.x, savedSize.y, false);
+    renderer.domElement.width  = savedSize.x;
+    renderer.domElement.height = savedSize.y;
     bloomComposer.setSize(savedSize.x, savedSize.y);
     finalComposer.setSize(savedSize.x, savedSize.y);
     bloomPass.resolution = savedSize.clone();
@@ -94,16 +104,17 @@ async function exportFrameAtSize(w, h) {
     beginResolutionOverride(w, h);
     try {
         renderForCapture();
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
             const finish = (blob) => {
+                const name = `galaxy_frame_${w}x${h}_${Date.now()}.png`;
                 if (!blob) {
                     const a = document.createElement('a');
                     a.href = renderer.domElement.toDataURL('image/png');
-                    a.download = `galaxy_frame_${w}x${h}_${Date.now()}.png`;
+                    a.download = name;
                     document.body.appendChild(a); a.click(); a.remove();
-                    return resolve();
+                } else {
+                    downloadBlob(blob, name);
                 }
-                downloadBlob(blob, `galaxy_frame_${w}x${h}_${Date.now()}.png`);
                 resolve();
             };
             if (renderer.domElement.toBlob) renderer.domElement.toBlob(finish, 'image/png');
@@ -129,7 +140,8 @@ async function startWebMRecording() {
     }
     beginResolutionOverride(w, h);
     const videoTracks = renderer.domElement.captureStream(60).getVideoTracks();
-    const audioTracks = (state.mediaDest && state.mediaDest.stream) ? state.mediaDest.stream.getAudioTracks() : [];
+    const audioTracks = (state.mediaDest && state.mediaDest.stream)
+        ? state.mediaDest.stream.getAudioTracks() : [];
     const stream   = new MediaStream([...videoTracks, ...audioTracks]);
     const mimeType = pickWebMType();
     webmChunks = [];
@@ -151,6 +163,50 @@ async function startWebMRecording() {
 
 function stopWebMRecording() { if (webmRecorder) webmRecorder.stop(); }
 
+// ── Audio encoding (ScriptProcessorNode → AudioEncoder → muxer) ──
+async function startAudioEncoding(sampleRate) {
+    if (!window.AudioEncoder || !state.audioContext || !state.gainNode) return false;
+
+    const cfg = { codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 };
+    const { supported } = await AudioEncoder.isConfigSupported(cfg);
+    if (!supported) return false;
+
+    audioTimestampUs = 0;
+    mp4Audio = new AudioEncoder({
+        output: (chunk, meta) => mp4Muxer && mp4Muxer.addAudioChunk(chunk, meta),
+        error:  (e) => console.error('AudioEncoder:', e),
+    });
+    mp4Audio.configure(cfg);
+
+    // ScriptProcessorNode taps raw PCM from the gain node
+    const BUF = 4096;
+    scriptNode = state.audioContext.createScriptProcessor(BUF, 2, 2);
+    scriptNode.onaudioprocess = (e) => {
+        if (!mp4Audio || mp4Audio.state === 'closed') return;
+        const n  = e.inputBuffer.length;
+        const sr = e.inputBuffer.sampleRate;
+        // f32-planar: left channel then right channel
+        const data = new Float32Array(n * 2);
+        data.set(e.inputBuffer.getChannelData(0), 0);
+        data.set(e.inputBuffer.getChannelData(1), n);
+        const audioData = new AudioData({
+            format: 'f32-planar', sampleRate: sr,
+            numberOfFrames: n, numberOfChannels: 2,
+            timestamp: audioTimestampUs, data,
+        });
+        mp4Audio.encode(audioData);
+        audioData.close();
+        audioTimestampUs += Math.round((n / sr) * 1_000_000);
+    };
+    state.gainNode.connect(scriptNode);
+    scriptNode.connect(state.audioContext.destination); // ScriptProcessorNode needs an output
+    return true;
+}
+
+function stopAudioEncoding() {
+    if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
+}
+
 // ── MP4 recording via Web Codecs + mp4-muxer ──
 async function startMP4Recording() {
     if (!window.VideoEncoder) {
@@ -161,30 +217,39 @@ async function startMP4Recording() {
     const bitrate     = bitrateMbps * 1_000_000;
     const codec       = pickAvcCodec(w, h);
 
-    const support = await VideoEncoder.isConfigSupported({ codec, width: w, height: h, bitrate, framerate: 60 });
-    if (!support.supported) {
-        captureStatus.textContent = `Codec unsupported at ${w}×${h}. Try a lower resolution.`; return;
+    const vSupport = await VideoEncoder.isConfigSupported({ codec, width: w, height: h, bitrate, framerate: 60 });
+    if (!vSupport.supported) {
+        captureStatus.textContent = `Codec not supported at ${w}×${h}. Try a lower resolution.`; return;
     }
 
     const { Muxer, ArrayBufferTarget } = await loadMp4Muxer();
+
+    // Probe audio support before committing to muxer config
+    const sampleRate = state.audioContext ? state.audioContext.sampleRate : 48000;
+    const hasAudio   = window.AudioEncoder && state.gainNode &&
+        (await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 })).supported;
+
     beginResolutionOverride(w, h);
 
     mp4Muxer = new Muxer({
         target: new ArrayBufferTarget(),
         video:  { codec: 'avc', width: w, height: h },
+        ...(hasAudio && { audio: { codec: 'aac', sampleRate, numberOfChannels: 2 } }),
         fastStart: 'in-memory',
     });
 
-    mp4Encoder = new VideoEncoder({
+    mp4Video = new VideoEncoder({
         output: (chunk, meta) => mp4Muxer.addVideoChunk(chunk, meta),
-        error:  (e) => { captureStatus.textContent = 'Encode error: ' + e.message; stopMP4Recording(); },
+        error:  (e) => { captureStatus.textContent = 'Video encode error: ' + e.message; stopMP4Recording(); },
     });
-    mp4Encoder.configure({ codec, width: w, height: h, bitrate, framerate: 60, latencyMode: 'quality' });
+    mp4Video.configure({ codec, width: w, height: h, bitrate, framerate: 60, latencyMode: 'quality' });
+
+    if (hasAudio) await startAudioEncoding(sampleRate);
 
     mp4FrameCount = 0; mp4StartTime = null; mp4LastTime = null;
     isMP4Recording = true; state.isRecording = true;
     recordBtn.textContent = '■ Stop Recording';
-    captureStatus.textContent = `Recording MP4 (${w}×${h} · ${bitrateMbps} Mbps)…`;
+    captureStatus.textContent = `Recording MP4 (${w}×${h} · ${bitrateMbps} Mbps${hasAudio ? ' · audio' : ''})…`;
 }
 
 async function stopMP4Recording() {
@@ -192,7 +257,9 @@ async function stopMP4Recording() {
     isMP4Recording = false;
     captureStatus.textContent = 'Finalising…';
     try {
-        await mp4Encoder.flush();
+        stopAudioEncoding();
+        if (mp4Audio) { await mp4Audio.flush(); mp4Audio.close(); mp4Audio = null; }
+        await mp4Video.flush();
         mp4Muxer.finalize();
         const blob = new Blob([mp4Muxer.target.buffer], { type: 'video/mp4' });
         downloadBlob(blob, `galaxy_${Date.now()}.mp4`);
@@ -201,27 +268,32 @@ async function stopMP4Recording() {
         console.error(e);
         captureStatus.textContent = 'Export failed: ' + e.message;
     } finally {
-        mp4Encoder = null; mp4Muxer = null;
+        mp4Video = null; mp4Muxer = null;
         endResolutionOverride();
         state.isRecording = false;
         recordBtn.textContent = '● Start Recording';
     }
 }
 
-// Called by main.js after every render when MP4 recording is active
+// Called by main.js every frame after render
 export function captureFrame(now) {
-    if (!isMP4Recording || !mp4Encoder || mp4Encoder.encodeQueueSize > 15) return;
+    if (!isMP4Recording || !mp4Video || mp4Video.encodeQueueSize > 15) return;
     if (mp4StartTime === null) { mp4StartTime = now; mp4LastTime = now; }
-    const timestampMicros = Math.round((now - mp4StartTime) * 1000);
-    const durationMicros  = Math.max(1, Math.round((now - mp4LastTime) * 1000));
+    const timestampUs = Math.round((now - mp4StartTime) * 1000);
+    const durationUs  = Math.max(1, Math.round((now - mp4LastTime) * 1000));
     mp4LastTime = now;
     let frame;
     try {
-        frame = new VideoFrame(renderer.domElement, { timestamp: timestampMicros, duration: durationMicros });
+        frame = new VideoFrame(renderer.domElement, { timestamp: timestampUs, duration: durationUs });
     } catch (_) { return; }
-    mp4Encoder.encode(frame, { keyFrame: mp4FrameCount % 60 === 0 });
+    mp4Video.encode(frame, { keyFrame: mp4FrameCount % 60 === 0 });
     frame.close();
     mp4FrameCount++;
+    // Update status every 60 frames
+    if (mp4FrameCount % 60 === 0) {
+        const secs = Math.round((now - mp4StartTime) / 1000);
+        captureStatus.textContent = captureStatus.textContent.replace(/\d+s$/, '') + `${secs}s`;
+    }
 }
 
 // ── Buttons ──
@@ -238,37 +310,35 @@ frameBtn.addEventListener('click', async () => {
     const preset = frameSizeSelect ? frameSizeSelect.value : 'current';
     let w = Math.floor(window.innerWidth), h = Math.floor(window.innerHeight);
     if (preset === '1080p') { w = 1920; h = 1080; }
-    else if (preset === '4k') { w = 3840; h = 2160; }
+    else if (preset === '4k')   { w = 3840; h = 2160; }
     captureStatus.textContent = `Saving frame (${w}×${h})…`;
     try { await exportFrameAtSize(w, h); captureStatus.textContent = 'Frame saved.'; }
     catch (e) { captureStatus.textContent = 'Frame capture failed.'; }
 });
 
-// ── Show/hide orientation row when "Current Window" selected ──
+// ── UI sync ──
 function syncOrientRow() {
     if (orientRow) orientRow.style.display = (resSelect && resSelect.value === 'current') ? 'none' : '';
 }
 if (resSelect) { resSelect.addEventListener('change', syncOrientRow); syncOrientRow(); }
 
-// ── Show/hide bitrate row and update note when format changes ──
 function syncFormatUI() {
-    const isMp4  = !formatSelect || formatSelect.value === 'mp4';
+    const isMp4 = !formatSelect || formatSelect.value === 'mp4';
     if (bitrateRow) bitrateRow.style.display = isMp4 ? '' : 'none';
     const noteEl = document.getElementById('capture-note');
     if (noteEl) noteEl.textContent = isMp4
-        ? 'MP4: Chrome/Edge only · video only · no audio'
-        : 'WebM: all browsers · includes audio';
+        ? 'MP4: Chrome/Edge · H.264 · audio included if playing'
+        : 'WebM: all browsers · VP9 · includes audio';
     syncOrientRow();
 }
 if (formatSelect) { formatSelect.addEventListener('change', syncFormatUI); syncFormatUI(); }
 
-// ── frame-size-select label ──
 if (frameSizeSelect) frameSizeSelect.addEventListener('change', (e) => {
     const el = document.getElementById('frame-size-value');
     if (el) el.textContent = e.target.options[e.target.selectedIndex].text;
 });
 
-// ── Collapsible section toggle (self-contained so it can't be blocked) ──
+// ── Collapsible section toggle ──
 (function () {
     const row   = document.getElementById('capture-toggle-row');
     const body  = document.getElementById('capture-body');
