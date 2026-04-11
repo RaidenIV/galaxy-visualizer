@@ -263,37 +263,63 @@ export function buildGalaxy(armCount, armTwist, typeKey) {
     }
 
     if (type === 'core') {
+        const coreSizeScale       = 1.0;
+        const barrenCoreNorm      = Math.max(0.05, Math.min(0.35, 0.13 * coreSizeScale));
+        const outerCoreNorm       = Math.max(barrenCoreNorm + 0.15, Math.min(0.98, 0.86 * Math.pow(coreSizeScale, 0.28)));
+        const innerCrowdingCenter = Math.max(barrenCoreNorm + 0.03, Math.min(0.70, 0.24 * coreSizeScale));
+        const innerCrowdingWidth  = 0.10 + 0.06 * coreSizeScale;
+        const bulgeRadius         = Math.max(0.08, Math.min(0.42, 0.22 * coreSizeScale));
+        const holeRadius          = Math.max(0.05, Math.min(0.24, 0.11 * coreSizeScale));
+
+        // Pass 1 — scatter particles into clumps, store provisional luminance
         let fmx = 0;
-        const barrenCoreNorm  = 0.13, outerCoreNorm = 0.86;
-        const innerCrowdingCenter = 0.24, innerCrowdingWidth = 0.10, bulgeRadius = 0.22, holeRadius = 0.11;
         for (let i = 0; i < N_GALAXY; i++) {
             const clumpAngle = Math.floor(Math.random() * 7) * (Math.PI * 2 / 7) + (Math.random() - 0.5) * 0.9;
             const inwardBias = Math.pow(Math.random(), 1.85);
             const clumpRNorm = barrenCoreNorm + (outerCoreNorm - barrenCoreNorm) * inwardBias;
-            const clumpR = state.maxGalaxyRxy * clumpRNorm;
-            const scatter = state.maxGalaxyRxy * (0.04 + 0.14 * clumpRNorm) * (0.55 + Math.random() * 0.85);
-            gx[i] = clumpR * Math.cos(clumpAngle) + gaussianRandom() * scatter;
-            gz[i] = clumpR * Math.sin(clumpAngle) + gaussianRandom() * scatter;
-            gy[i] = gy[i] * (0.028 + 0.065 * clumpRNorm);
-            galaxyRxy[i] = Math.sqrt(gx[i]*gx[i] + gz[i]*gz[i]); galaxyTheta[i] = Math.atan2(gz[i], gx[i]);
+            const clumpR     = state.maxGalaxyRxy * clumpRNorm;
+            const scatter    = state.maxGalaxyRxy * (0.04 + 0.14 * clumpRNorm) * (0.55 + Math.random() * 0.85);
+            const lum        = 0.24 + Math.random() * 0.76;
+
+            gx[i] = clumpR * Math.cos(clumpAngle) + (Math.random() - 0.5) * scatter;
+            gz[i] = clumpR * Math.sin(clumpAngle) * (0.6 + Math.random() * 0.7) + (Math.random() - 0.5) * scatter;
+            gy[i] = gy[i] * (0.04 + 0.12 * Math.pow(Math.random(), 1.5));
+
+            galaxyRxy[i]   = Math.sqrt(gx[i]*gx[i] + gz[i]*gz[i]);
+            galaxyTheta[i] = Math.atan2(gz[i], gx[i]);
             if (galaxyRxy[i] > fmx) fmx = galaxyRxy[i];
-            const rNorm = saturate(galaxyRxy[i] / (state.maxGalaxyRxy + 1e-5)); galaxyNormR[i] = rNorm;
-            const bulge = Math.exp(-Math.pow(rNorm / bulgeRadius, 2.0));
-            const innerCrowding = Math.exp(-Math.pow((rNorm - innerCrowdingCenter) / innerCrowdingWidth, 2.0));
-            const holeMask = saturate((rNorm - holeRadius) / 0.06);
-            const armGlow = innerCrowding * holeMask * (0.65 + 0.35 * Math.sin(galaxyTheta[i] * 3.5 + rNorm * 8.0 + i * 0.007));
-            galaxyDustWeight[i] = (1.0 - armGlow) * Math.exp(-Math.pow((rNorm - 0.38) / 0.28, 2.0)) * 0.35;
-            galaxyWarmCore[i] = bulge; galaxyArmGlow[i] = armGlow;
-            galaxyMidBlue[i] = Math.exp(-Math.pow((rNorm - 0.56) / 0.18, 2.0));
-            galaxyOuterCool[i] = Math.pow(saturate((rNorm - 0.70) / 0.30), 1.20);
-            galaxyNebulaWeight[i] = armGlow * Math.exp(-Math.pow((rNorm - 0.38) / 0.24, 2.0));
-            let sizeRand = Math.exp((Math.random() * 2.0 - 1.0) * 0.78);
-            if (Math.random() < 0.014) sizeRand *= 2.0 + Math.random() * 2.8;
-            galaxySizeScale[i] = Math.max(0.35, Math.min(4.8, sizeRand * (0.75 + armGlow * 0.52 + bulge * 0.95)));
-            galaxyAlphaScale[i] = saturate((0.14 + 0.35 * armGlow + 0.44 * bulge + 0.16 * (1.0 - rNorm)) * (1.0 - galaxyDustWeight[i] * 0.80));
-            galaxyPositionsBuf[i*3] = gx[i]; galaxyPositionsBuf[i*3+1] = gy[i]; galaxyPositionsBuf[i*3+2] = gz[i];
+
+            galaxyArmGlow[i]      = lum;
+            galaxyMidBlue[i]      = lum;
+            galaxyDustWeight[i]   = 0.0;
+            galaxyWarmCore[i]     = 0.0;
+            galaxyOuterCool[i]    = 0.0;
+            galaxyNebulaWeight[i] = lum * 0.5;
         }
-        state.maxGalaxyRxy = fmx; finalize(); return;
+        state.maxGalaxyRxy = fmx;
+
+        // Pass 2 — derive final color fields from redistributed radii
+        for (let i = 0; i < N_GALAXY; i++) {
+            const rn2  = saturate(galaxyRxy[i] / (state.maxGalaxyRxy + 1e-5));
+            const lum  = galaxyArmGlow[i];
+            const coreHole   = 1.0 - Math.exp(-Math.pow(rn2 / holeRadius, 4.2));
+            const innerCrowd = 1.0 + 1.0 * Math.exp(-Math.pow((rn2 - innerCrowdingCenter) / innerCrowdingWidth, 2.0));
+            const bulge      = Math.exp(-Math.pow(rn2 / bulgeRadius, 2.0)) * coreHole;
+
+            galaxyNormR[i]        = rn2;
+            galaxyDustWeight[i]   = (1.0 - lum) * 0.42 * Math.exp(-Math.pow((rn2 - 0.30) / 0.28, 2.0));
+            galaxyWarmCore[i]     = bulge;
+            galaxyArmGlow[i]      = lum * innerCrowd * (0.35 + 0.65 * (1.0 - rn2));
+            galaxyMidBlue[i]      = lum * (0.18 + 0.82 * Math.exp(-Math.pow((rn2 - 0.52) / 0.30, 2.0)));
+            galaxyOuterCool[i]    = Math.pow(saturate((rn2 - 0.68) / 0.32), 1.15);
+            galaxyNebulaWeight[i] = lum * innerCrowd * (0.25 + 0.35 * (1.0 - rn2));
+
+            galaxyPositionsBuf[i*3]   = gx[i];
+            galaxyPositionsBuf[i*3+1] = gy[i];
+            galaxyPositionsBuf[i*3+2] = gz[i];
+        }
+
+        finalize(); return;
     }
 
     if (type === 'irregular') {
