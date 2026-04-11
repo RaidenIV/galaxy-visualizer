@@ -5,7 +5,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass }     from 'three/addons/postprocessing/ShaderPass.js';
 import { downloadBlob } from './utils.js';
 import { state } from './state.js';
-import { camera, renderer, bloomComposer, finalComposer, bloomPass, scene } from './renderer.js';
+import { camera, bloomPass, scene } from './renderer.js';
 import { BLOOM_LAYER } from './constants.js';
 
 // ── DOM refs ──
@@ -35,7 +35,11 @@ function buildRecordingPipeline(w, h) {
     recCanvas.height = h;
 
     recRenderer = new THREE.WebGLRenderer({
-        canvas: recCanvas, antialias: true, preserveDrawingBuffer: true, alpha: false,
+        canvas: recCanvas,
+        antialias: true,
+        preserveDrawingBuffer: true,
+        alpha: false,
+        powerPreference: 'high-performance',
     });
     recRenderer.setPixelRatio(1);
     recRenderer.setSize(w, h);
@@ -113,55 +117,29 @@ function pickAvcCodec(w, h) {
     return (w > 1920 || h > 1920) ? 'avc1.640033' : 'avc1.640028';
 }
 
-// ── PNG frame export (one-shot: temporarily overrides main renderer) ──
-function renderMainForCapture() {
-    camera.layers.set(BLOOM_LAYER); bloomComposer.render();
-    camera.layers.set(0);           finalComposer.render();
-}
-
+// ── PNG frame export (one-shot: uses the offscreen capture pipeline) ──
 async function exportFrameAtSize(w, h) {
-    // Save main renderer state
-    const savedPxRatio = renderer.getPixelRatio();
-    const savedSize    = new THREE.Vector2(); renderer.getSize(savedSize);
-    const savedAspect  = camera.aspect;
-
-    renderer.setPixelRatio(1);
-    renderer.setSize(w, h, false);
-    renderer.domElement.width  = w;
-    renderer.domElement.height = h;
-    bloomComposer.setSize(w, h);
-    finalComposer.setSize(w, h);
-    bloomPass.resolution = new THREE.Vector2(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    buildRecordingPipeline(w, h);
     try {
-        renderMainForCapture();
+        renderOffscreen();
         await new Promise((resolve) => {
-            const name   = `galaxy_frame_${w}x${h}_${Date.now()}.png`;
+            const name = `galaxy_frame_${w}x${h}_${Date.now()}.png`;
             const finish = (blob) => {
                 if (!blob) {
                     const a = document.createElement('a');
-                    a.href = renderer.domElement.toDataURL('image/png');
+                    a.href = recCanvas.toDataURL('image/png');
                     a.download = name;
                     document.body.appendChild(a); a.click(); a.remove();
-                } else { downloadBlob(blob, name); }
+                } else {
+                    downloadBlob(blob, name);
+                }
                 resolve();
             };
-            if (renderer.domElement.toBlob) renderer.domElement.toBlob(finish, 'image/png');
+            if (recCanvas.toBlob) recCanvas.toBlob(finish, 'image/png');
             else finish(null);
         });
     } finally {
-        // Restore main renderer
-        renderer.setPixelRatio(savedPxRatio);
-        renderer.setSize(savedSize.x, savedSize.y, false);
-        renderer.domElement.width  = savedSize.x;
-        renderer.domElement.height = savedSize.y;
-        bloomComposer.setSize(savedSize.x, savedSize.y);
-        finalComposer.setSize(savedSize.x, savedSize.y);
-        bloomPass.resolution = savedSize.clone();
-        camera.aspect = savedAspect;
-        camera.updateProjectionMatrix();
-        renderMainForCapture();
+        destroyRecordingPipeline();
     }
 }
 

@@ -30,7 +30,13 @@ import { state } from './state.js';
 export const canvas   = document.getElementById('canvas');
 export const scene    = new THREE.Scene();
 export const camera   = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 2000);
-export const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true });
+export const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: false,
+    preserveDrawingBuffer: false,
+    powerPreference: 'high-performance',
+});
 
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(1);
@@ -104,6 +110,15 @@ function setComposerResolution(composer, cssW, cssH, pixelRatio) {
     composer.setSize(Math.round(cssW * pixelRatio), Math.round(cssH * pixelRatio));
 }
 
+
+function getLiveBloomPixelRatio(cssW, cssH, livePixelRatio) {
+    const mode = getVisualModeConfig();
+    const bloomScale = Math.min(1, Math.max(0.5, mode.bloomResolutionScale ?? 1.0));
+    const bloomPixelRatio = Math.min(livePixelRatio, Math.max(0.5, livePixelRatio * bloomScale));
+    state.liveBloomPixelRatio = bloomPixelRatio;
+    return bloomPixelRatio;
+}
+
 function applyScaledCounts(baseGalaxy, baseStars, baseScatter, baseHalo, baseNebula) {
     const density = getVisualModeConfig().densityMultiplier;
     state.baseGalaxyCount    = Math.min(N_GALAXY,  Math.floor(baseGalaxy  * density));
@@ -120,17 +135,21 @@ export function setRendererPixelRatioFromPreset() {
     const mode = getVisualModeConfig();
     const targetPixels = mode.width * mode.height;
     const desiredPixelRatio = Math.min(4, Math.max(0.5, Math.sqrt(targetPixels / (cssW * cssH))));
+    const bloomPixelRatio = getLiveBloomPixelRatio(cssW, cssH, desiredPixelRatio);
 
     state.liveRenderPixelRatio = desiredPixelRatio;
 
     renderer.setPixelRatio(desiredPixelRatio);
     renderer.setSize(cssW, cssH, false);
-    setComposerResolution(bloomComposer, cssW, cssH, desiredPixelRatio);
+    setComposerResolution(bloomComposer, cssW, cssH, bloomPixelRatio);
     setComposerResolution(finalComposer, cssW, cssH, desiredPixelRatio);
-    bloomPass.resolution = new THREE.Vector2(
-        Math.round(cssW * desiredPixelRatio),
-        Math.round(cssH * desiredPixelRatio)
+    bloomPass.resolution.set(
+        Math.round(cssW * bloomPixelRatio),
+        Math.round(cssH * bloomPixelRatio)
     );
+    if (finalPass?.material?.uniforms?.bloomTexture) {
+        finalPass.material.uniforms.bloomTexture.value = bloomComposer.renderTarget2.texture;
+    }
 }
 
 // ── Camera preset transition ──

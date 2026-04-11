@@ -9,8 +9,20 @@ export const BASE_HALO_COUNT    = 12000;
 export const BASE_NEBULA_COUNT  = 4500;
 
 export const VISUAL_MODES = {
-    '1080p': { label: '1080p', width: 1920, height: 1080, densityMultiplier: 1.0 },
-    '4k':    { label: '4K',    width: 3840, height: 2160, densityMultiplier: 4.0 },
+    '1080p': {
+        label: '1080p',
+        width: 1920,
+        height: 1080,
+        densityMultiplier: 1.0,
+        bloomResolutionScale: 1.0,
+    },
+    '4k': {
+        label: '4K',
+        width: 3840,
+        height: 2160,
+        densityMultiplier: 4.0,
+        bloomResolutionScale: 0.75,
+    },
 };
 
 export const N_GALAXY  = Math.floor(BASE_GALAXY_COUNT  * VISUAL_MODES['4k'].densityMultiplier);
