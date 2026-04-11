@@ -153,54 +153,60 @@
                             <option value="low">Low Angle</option>
                         </select>
                     </div>
-                    <!-- Capture -->
-                    <div class="cmap-section">
-                        <div class="section-title" style="margin:0 0 8px 0;">Capture</div>
-                        <div class="slider-container" style="margin-top:0;">
-                            <div class="slider-label"><span>Format</span><span class="slider-value" id="record-format-value">MP4</span></div>
-                            <select id="record-format-select">
-                                <option value="mp4" selected>MP4 (H.264)</option>
-                                <option value="webm">WebM (VP9) + Audio</option>
-                            </select>
-                        </div>
-                        <div class="slider-container">
-                            <div class="slider-label"><span>Resolution</span><span class="slider-value" id="record-resolution-value">1080p</span></div>
-                            <select id="record-resolution-select">
-                                <option value="current">Current Window</option>
-                                <option value="1080p" selected>1080p</option>
-                                <option value="4k">4K</option>
-                            </select>
-                        </div>
-                        <div class="slider-container" id="record-orientation-row">
-                            <div class="slider-label"><span>Orientation</span><span class="slider-value" id="record-orientation-value">Landscape</span></div>
-                            <select id="record-orientation-select">
-                                <option value="landscape" selected>Landscape</option>
-                                <option value="portrait">Portrait</option>
-                            </select>
-                        </div>
-                        <div class="slider-container" id="record-bitrate-row">
-                            <div class="slider-label"><span>Quality</span><span class="slider-value" id="record-bitrate-value">16 Mbps</span></div>
-                            <select id="record-bitrate-select">
-                                <option value="8">8 Mbps &mdash; Good</option>
-                                <option value="16" selected>16 Mbps &mdash; High</option>
-                                <option value="50">50 Mbps &mdash; Ultra</option>
-                            </select>
-                        </div>
-                        <div class="slider-container">
-                            <div class="slider-label"><span>Frame Export Size</span><span class="slider-value" id="frame-size-value">Current</span></div>
-                            <select id="frame-size-select">
-                                <option value="current" selected>Current</option>
-                                <option value="1080p">1080p</option>
-                                <option value="4k">4K</option>
-                            </select>
-                        </div>
-                        <div class="button-row">
-                            <button id="record-btn" class="secondary-btn">&#9679; Start Recording</button>
-                            <button id="frame-btn" class="secondary-btn">Save Frame</button>
-                        </div>
-                        <div class="status-line" id="capture-status">Idle</div>
-                        <div class="mini-note" id="capture-note">MP4: Chrome/Edge only &middot; video only &middot; no audio</div>
+                </div>
+            </div>
+
+            <!-- Capture -->
+            <div class="cmap-section">
+                <div class="section-toggle-row" id="capture-toggle-row">
+                    <div class="section-title" style="margin:0;">Capture</div>
+                    <span class="section-arrow" id="capture-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="capture-body">
+                    <div class="slider-container" style="margin-top:8px;">
+                        <div class="slider-label"><span>Format</span><span class="slider-value" id="record-format-value">MP4</span></div>
+                        <select id="record-format-select">
+                            <option value="mp4" selected>MP4 (H.264)</option>
+                            <option value="webm">WebM (VP9) + Audio</option>
+                        </select>
                     </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Resolution</span><span class="slider-value" id="record-resolution-value">1080p</span></div>
+                        <select id="record-resolution-select">
+                            <option value="current">Current Window</option>
+                            <option value="1080p" selected>1080p</option>
+                            <option value="4k">4K</option>
+                        </select>
+                    </div>
+                    <div class="slider-container" id="record-orientation-row">
+                        <div class="slider-label"><span>Orientation</span><span class="slider-value" id="record-orientation-value">Landscape</span></div>
+                        <select id="record-orientation-select">
+                            <option value="landscape" selected>Landscape</option>
+                            <option value="portrait">Portrait</option>
+                        </select>
+                    </div>
+                    <div class="slider-container" id="record-bitrate-row">
+                        <div class="slider-label"><span>Quality</span><span class="slider-value" id="record-bitrate-value">16 Mbps</span></div>
+                        <select id="record-bitrate-select">
+                            <option value="8">8 Mbps &mdash; Good</option>
+                            <option value="16" selected>16 Mbps &mdash; High</option>
+                            <option value="50">50 Mbps &mdash; Ultra</option>
+                        </select>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Frame Export Size</span><span class="slider-value" id="frame-size-value">Current</span></div>
+                        <select id="frame-size-select">
+                            <option value="current" selected>Current</option>
+                            <option value="1080p">1080p</option>
+                            <option value="4k">4K</option>
+                        </select>
+                    </div>
+                    <div class="button-row">
+                        <button id="record-btn" class="secondary-btn">&#9679; Start Recording</button>
+                        <button id="frame-btn" class="secondary-btn">Save Frame</button>
+                    </div>
+                    <div class="status-line" id="capture-status">Idle</div>
+                    <div class="mini-note" id="capture-note">MP4: Chrome/Edge only &middot; video only &middot; no audio</div>
                 </div>
             </div>
 
