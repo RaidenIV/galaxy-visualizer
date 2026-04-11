@@ -67,34 +67,6 @@ haloGeo.setAttribute('aColor',   new THREE.BufferAttribute(haloColorsBuf, 3));
 haloGeo.setAttribute('aAlpha',   new THREE.BufferAttribute(haloAlphasBuf, 1));
 haloGeo.setAttribute('aSize',    new THREE.BufferAttribute(haloSizesBuf, 1));
 
-const haloVertShader = `
-    attribute vec3  aColor;
-    attribute float aAlpha;
-    attribute float aSize;
-    uniform   float uBrightness;
-    varying   vec3  vColor;
-    varying   float vAlpha;
-    void main() {
-        vColor = aColor * uBrightness;
-        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-        float viewDist = -mvPos.z;
-        float depthBoost = clamp(1.22 - viewDist * 0.045, 0.68, 1.22);
-        vAlpha = aAlpha * depthBoost;
-        gl_PointSize = aSize * (350.0 / max(0.001, viewDist));
-        gl_Position  = projectionMatrix * mvPos;
-    }
-`;
-const haloFragShader = `
-    uniform sampler2D pointTexture;
-    varying vec3  vColor;
-    varying float vAlpha;
-    void main() {
-        vec4 tex = texture2D(pointTexture, gl_PointCoord);
-        gl_FragColor = vec4(vColor, vAlpha * tex.a);
-        if (gl_FragColor.a < 0.005) discard;
-    }
-`;
-
 export const haloMat = new THREE.ShaderMaterial({
     uniforms: { pointTexture: { value: circleTexture }, uBrightness: { value: 0.55 } },
     vertexShader: haloVertShader, fragmentShader: haloFragShader,
