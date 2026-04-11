@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Visualizer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="visualizer-container">
+    <canvas id="canvas"></canvas>
+    <div id="controls">
+        <div class="logo-top">
+            <img src="https://images.squarespace-cdn.com/content/v1/681ea18dd168a935c26295bd/f173dc58-2856-4e84-b647-8cf46ca113ad/phonto-Photoroom.png?format=1000w" alt="Logo" class="logo">
+        </div>
+        <div class="header-container">
+            <div class="app-title">Galaxy Visualizer</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span id="fps-display" style="font-size:11px;color:#ffffff;font-family:monospace;min-width:48px;text-align:right;">-- fps</span>
+                <button class="minimize-btn" id="minimize-btn" title="Collapse panel">−</button>
+            </div>
+        </div>
+        <div class="controls-content">
+            <button id="load-btn" class="primary">Load Audio File</button>
+            <button id="play-btn" class="play" disabled>▶ Play</button>
+            <div class="progress-container" id="progress-container" style="display:none;">
+                <div class="progress-label">
+                    <span class="time-display" id="current-time">0:00</span>
+                    <span class="time-display" id="duration-time">0:00</span>
+                </div>
+                <div class="progress-bar" id="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+            </div>
+            <div class="info">
+                <div class="stat-label">Audio File</div>
+                <div id="audio-name" class="info-value">No file loaded</div>
+            </div>
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Volume</span>
+                    <span class="slider-value" id="volume-value">100%</span>
+                </div>
+                <input type="range" id="volume-slider" min="0" max="100" value="100">
+            </div>
+            <div class="slider-container" style="margin-top:6px;">
+                <div class="slider-label">
+                    <span>Mute</span>
+                    <span class="slider-value" id="mute-value">Off</span>
+                </div>
+                <label class="toggle-control">
+                    <input type="checkbox" id="mute-toggle" class="toggle-input">
+                    <span class="toggle-switch"></span>
+                </label>
+            </div>
+
+            <!-- Galaxy Settings -->
+            <div class="cmap-section">
+                <div class="section-toggle-row" id="galaxy-toggle-row">
+                    <div class="section-title" style="margin:0;">Galaxy Settings</div>
+                    <span class="section-arrow" id="galaxy-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="galaxy-body">
+                    <div class="slider-container" style="margin-top:8px;">
+                        <div class="slider-label"><span>Reactivity</span><span class="slider-value" id="reactivity-value">100%</span></div>
+                        <input type="range" id="reactivity-slider" min="10" max="300" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Galaxy Stars</span><span class="slider-value" id="galaxy-stars-value">100%</span></div>
+                        <input type="range" id="galaxy-stars-slider" min="10" max="200" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Auto Rotate</span><span class="slider-value" id="auto-rotate-value">Off</span></div>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="auto-rotate-toggle" class="toggle-input">
+                            <span class="toggle-switch"></span>
+                        </label>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Auto Rotate Speed</span><span class="slider-value" id="auto-rotate-speed-value">20%</span></div>
+                        <input type="range" id="auto-rotate-speed-slider" min="5" max="250" value="20">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Galaxy Scale</span><span class="slider-value" id="galaxy-scale-value">100%</span></div>
+                        <input type="range" id="galaxy-scale-slider" min="25" max="200" value="100" title="Uniform scale of the entire galaxy group">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Core Size</span><span class="slider-value" id="galaxy-core-size-value">100%</span></div>
+                        <input type="range" id="galaxy-core-size-slider" min="50" max="400" value="100" title="Scales the central white sphere">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Galaxy Flatness</span><span class="slider-value" id="galaxy-flatness-value">100%</span></div>
+                        <input type="range" id="galaxy-flatness-slider" min="10" max="200" value="100" title="Vertical flattening of the galaxy disc, halo, and gas clouds">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Dust Lane Intensity</span><span class="slider-value" id="dust-intensity-value">100%</span></div>
+                        <input type="range" id="dust-intensity-slider" min="0" max="200" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Gas &amp; Nebula Density</span><span class="slider-value" id="gas-density-value">100%</span></div>
+                        <input type="range" id="gas-density-slider" min="0" max="250" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Disc Inclination</span><span class="slider-value" id="disc-inclination-value">0°</span></div>
+                        <input type="range" id="disc-inclination-slider" min="-90" max="90" value="0" title="Rotate the galaxy around its polar axis">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Field of View</span><span class="slider-value" id="fov-value">60°</span></div>
+                        <input type="range" id="fov-slider" min="30" max="100" value="60" title="Camera lens angle">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Beam Visibility Threshold</span><span class="slider-value" id="beam-threshold-value">80%</span></div>
+                        <input type="range" id="beam-threshold-slider" min="0" max="100" value="80">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Lightning Frequency</span><span class="slider-value" id="lightning-frequency-value">100%</span></div>
+                        <input type="range" id="lightning-frequency-slider" min="0" max="300" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Core Glow Intensity</span><span class="slider-value" id="core-glow-intensity-value">100%</span></div>
+                        <input type="range" id="core-glow-intensity-slider" min="0" max="250" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Core Glow Size</span><span class="slider-value" id="core-glow-size-value">50%</span></div>
+                        <input type="range" id="core-glow-size-slider" min="25" max="300" value="50">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Beam Thickness</span><span class="slider-value" id="beam-thickness-value">100%</span></div>
+                        <input type="range" id="beam-thickness-slider" min="25" max="300" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Beam Length</span><span class="slider-value" id="beam-length-value">150%</span></div>
+                        <input type="range" id="beam-length-slider" min="25" max="200" value="150">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Performance Preset</span><span class="slider-value" id="performance-preset-value">Quality</span></div>
+                        <select id="performance-preset-select">
+                            <option value="quality" selected>Quality</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="performance">Performance</option>
+                        </select>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Camera Preset</span><span class="slider-value" id="camera-preset-value">Three-Quarter</span></div>
+                        <select id="camera-preset-select">
+                            <option value="threeQuarter" selected>Three-Quarter</option>
+                            <option value="wide">Wide</option>
+                            <option value="side">Side Profile</option>
+                            <option value="polar">Polar</option>
+                            <option value="low">Low Angle</option>
+                        </select>
+                    </div>
+                    <!-- Capture -->
+                    <div class="cmap-section">
+                        <div class="section-title" style="margin:0 0 8px 0;">Capture</div>
+                        <div class="slider-container" style="margin-top:0;">
+                            <div class="slider-label"><span>Frame Export Size</span><span class="slider-value" id="frame-size-value">Current</span></div>
+                            <select id="frame-size-select">
+                                <option value="current" selected>Current</option>
+                                <option value="1080p">1080p</option>
+                                <option value="4k">4K</option>
+                            </select>
+                        </div>
+                        <div class="button-row">
+                            <button id="record-btn" class="secondary-btn">● Start Recording</button>
+                            <button id="frame-btn" class="secondary-btn">Save Frame</button>
+                        </div>
+                        <div class="status-line" id="capture-status">Idle</div>
+                        <div class="mini-note">Recording exports a WebM from the live canvas. Frame capture saves a PNG at the selected resolution.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Galaxy Type -->
+            <div class="cmap-section">
+                <div class="section-toggle-row" id="morph-toggle-row">
+                    <div class="section-title" style="margin:0;">Galaxy Type</div>
+                    <span class="section-arrow" id="morph-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="morph-body">
+                    <div class="slider-container" style="margin-top:8px;">
+                        <div class="slider-label"><span>Type</span><span class="slider-value" id="galaxy-type-value">Eye</span></div>
+                        <select id="galaxy-type-select">
+                            <optgroup label="Spiral / Disc">
+                                <option value="barred">Barred Spiral</option>
+                                <option value="grand">Grand Design Spiral</option>
+                                <option value="flocculent">Flocculent Spiral</option>
+                                <option value="multiarm">Multi-Arm Spiral</option>
+                                <option value="ring">Ring Galaxy</option>
+                                <option value="lenticular">Lenticular (S0)</option>
+                                <option value="elliptical">Elliptical</option>
+                            </optgroup>
+                            <optgroup label="Irregular">
+                                <option value="irregular">Irregular</option>
+                                <option value="core" selected>Eye</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="status-line" id="regen-status"></div>
+                </div>
+            </div>
+
+            <!-- Cinema Camera -->
+            <div class="cmap-section">
+                <div class="section-toggle-row" id="cinema-toggle-row">
+                    <div class="section-title" style="margin:0;">Cinema Camera</div>
+                    <span class="section-arrow" id="cinema-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="cinema-body">
+                    <div class="slider-container" style="margin-top:8px;">
+                        <div class="slider-label"><span>Cinema Mode</span></div>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="cinema-mode-toggle" class="toggle-input">
+                            <span class="toggle-switch"></span>
+                        </label>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Camera Path</span><span class="slider-value" id="cinema-path-value">Orbit</span></div>
+                        <select id="cinema-path-select">
+                            <option value="orbit" selected>Orbit</option>
+                            <option value="zoom">Zoom Pulse</option>
+                            <option value="sweep">Arc Sweep</option>
+                            <option value="dive">Polar Dive</option>
+                            <option value="figure8">Figure-8</option>
+                            <option value="crane">Crane Shot</option>
+                            <option value="spiral">Spiral Approach</option>
+                            <option value="pendulum">Pendulum</option>
+                        </select>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Path Speed</span><span class="slider-value" id="cinema-speed-value">50%</span></div>
+                        <input type="range" id="cinema-speed-slider" min="5" max="200" value="50">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Elevation</span><span class="slider-value" id="cinema-elevation-value">35%</span></div>
+                        <input type="range" id="cinema-elevation-slider" min="0" max="100" value="35" title="Camera height bias — 0 = disc-level, 100 = overhead">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Distance</span><span class="slider-value" id="cinema-distance-value">100%</span></div>
+                        <input type="range" id="cinema-distance-slider" min="30" max="250" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Auto-Advance Paths</span></div>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="cinema-auto-advance" class="toggle-input">
+                            <span class="toggle-switch"></span>
+                        </label>
+                    </div>
+                    <div class="mini-note">Cinema mode overrides manual orbit. Press C or disable to regain mouse control.</div>
+                </div>
+            </div>
+
+            <!-- Lightning Settings -->
+            <div class="cmap-section">
+                <div class="section-toggle-row" id="lightning-toggle-row">
+                    <div class="section-title" style="margin:0;">Lightning Settings</div>
+                    <span class="section-arrow" id="lightning-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="lightning-body">
+                    <div class="slider-container" style="margin-top:8px;">
+                        <div class="slider-label"><span>Lightning</span><span class="slider-value" id="lightning-enabled-value">On</span></div>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="lightning-enabled-toggle" class="toggle-input" checked>
+                            <span class="toggle-switch"></span>
+                        </label>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Recursion Depth</span><span class="slider-value" id="depth-value">6</span></div>
+                        <input type="range" id="depth-slider" min="1" max="8" value="6" step="1">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Branch Probability</span><span class="slider-value" id="branch-prob-value">15%</span></div>
+                        <input type="range" id="branch-prob-slider" min="0" max="100" value="15">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Max Offset</span><span class="slider-value" id="max-offset-value">4.00</span></div>
+                        <input type="range" id="max-offset-slider" min="10" max="400" value="400">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Branch Length</span><span class="slider-value" id="branch-length-value">1.42</span></div>
+                        <input type="range" id="branch-length-slider" min="5" max="200" value="142">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Lightning Bloom</span><span class="slider-value" id="lightning-bloom-value">400%</span></div>
+                        <input type="range" id="lightning-bloom-slider" min="0" max="400" value="400">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Strike Length</span><span class="slider-value" id="lightning-strike-length-value">100%</span></div>
+                        <input type="range" id="lightning-strike-length-slider" min="10" max="300" value="100">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Galaxy Color Map -->
+            <div class="cmap-section">
+                <div class="section-toggle-row" id="cmap-toggle-row">
+                    <div class="section-title" style="margin:0;">Galaxy Color Map</div>
+                    <span class="section-arrow" id="cmap-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="cmap-body">
+                    <div class="slider-container" style="margin-top:8px;">
+                        <div class="slider-label"><span>Distribution</span><span class="slider-value" id="cmap-distribution-value">Traditional Radial</span></div>
+                        <select id="cmap-distribution-select">
+                            <option value="mixed">Mixed</option>
+                            <option value="traditional" selected>Traditional Radial</option>
+                        </select>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Reverse</span><span class="slider-value" id="cmap-reverse-value">On</span></div>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="cmap-reverse-toggle" class="toggle-input" checked>
+                            <span class="toggle-switch"></span>
+                        </label>
+                    </div>
+                    <div class="cmap-grid" id="cmap-grid">
+                        <div class="cmap-auto-row">
+                            <button class="cmap-btn" data-cmap="auto">⟳ Auto-cycle</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Presets -->
+            <div class="cmap-section">
+                <div class="section-toggle-row" id="presets-toggle-row">
+                    <div class="section-title" style="margin:0;">Presets</div>
+                    <span class="section-arrow" id="presets-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="presets-body">
+                    <div class="mini-note" style="margin-top:6px;margin-bottom:10px;">Save up to 4 named presets to browser storage, or export/import as JSON.</div>
+                    <div id="preset-slots"></div>
+                    <div class="button-row" style="margin-top:8px;">
+                        <button id="preset-export-btn" class="secondary-btn">↓ Export JSON</button>
+                        <button id="preset-import-btn" class="secondary-btn">↑ Import JSON</button>
+                    </div>
+                    <div class="status-line" id="preset-status"></div>
+                </div>
+            </div>
+
+            <button id="reset-btn" class="primary">Reset to Defaults</button>
+            <div class="keyboard-shortcuts">
+                <div class="section-toggle-row" id="keyboard-toggle-row">
+                    <div class="shortcuts-title" style="margin:0;">Keyboard Shortcuts</div>
+                    <span class="section-arrow" id="keyboard-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="keyboard-body">
+                    <div class="shortcut-item" style="margin-top:8px;">
+                        <div class="shortcut-key">SPACE</div><div class="shortcut-desc">Play / Pause</div>
+                    </div>
+                    <div class="shortcut-item">
+                        <div class="shortcut-key">F</div><div class="shortcut-desc">Fullscreen</div>
+                    </div>
+                    <div class="shortcut-item">
+                        <div class="shortcut-key">H</div><div class="shortcut-desc">Hide UI</div>
+                    </div>
+                    <div class="shortcut-item">
+                        <div class="shortcut-key">C</div><div class="shortcut-desc">Toggle Cinema Mode</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="beat-flash"></div>
+<div id="drag-overlay">
+    <div class="drag-icon">🎵</div>
+    <div class="drag-label">Drop audio file</div>
+    <div class="drag-sub">mp3 · wav · ogg · flac · aac</div>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
