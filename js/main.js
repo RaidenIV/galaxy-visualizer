@@ -15,7 +15,7 @@ import { analyzeAudio } from './audio.js';
 import { sampleColormap } from './utils.js';
 
 // Side-effect imports (register all event listeners)
-import './capture.js';
+import { captureFrame } from './capture.js';
 import './controls.js';
 
 // ── Animation loop ──
@@ -218,6 +218,9 @@ function animate(now = performance.now()) {
     bloomComposer.render();
     camera.layers.set(0);
     finalComposer.render();
+
+    // ── MP4 frame capture ──
+    captureFrame(now);
 }
 
 // ── Kick off ──
