@@ -64,15 +64,7 @@
                     <span class="section-arrow" id="galaxy-arrow">▸</span>
                 </div>
                 <div class="section-body collapsed" id="galaxy-body">
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Visual Mode</span><span class="slider-value" id="visual-mode-value">1080p</span></div>
-                        <select id="visual-mode-select">
-                            <option value="1080p" selected>1080p</option>
-                            <option value="4k">4K</option>
-                        </select>
-                    </div>
-                    <div class="mini-note" style="margin-top:2px;margin-bottom:10px;">4K mode raises the live render resolution and particle counts so 4K exports match the real-time view more closely.</div>
-                    <div class="slider-container" style="margin-top:8px;">
+<div class="slider-container" style="margin-top:8px;">
                         <div class="slider-label"><span>Reactivity</span><span class="slider-value" id="reactivity-value">100%</span></div>
                         <input type="range" id="reactivity-slider" min="10" max="300" value="100">
                     </div>
@@ -346,8 +338,8 @@
                         </select>
                     </div>
                     <div class="slider-container">
-                        <div class="slider-label"><span>Visual Mode</span><span class="slider-value" id="record-resolution-value">1080p</span></div>
-                        <select id="record-resolution-select" class="capture-select" disabled>
+                        <div class="slider-label"><span>Export Resolution</span><span class="slider-value" id="record-resolution-value">1080p</span></div>
+                        <select id="record-resolution-select" class="capture-select">
                             <option value="1080p" selected>1080p</option>
                             <option value="4k">4K</option>
                         </select>
@@ -361,10 +353,9 @@
                         </select>
                     </div>
                     <div class="slider-container">
-                        <div class="slider-label"><span>Frame Export Size</span><span class="slider-value" id="frame-size-value">Current</span></div>
+                        <div class="slider-label"><span>Frame Export Size</span><span class="slider-value" id="frame-size-value">1080p</span></div>
                         <select id="frame-size-select" class="capture-select">
-                            <option value="current" selected>Current</option>
-                            <option value="1080p">1080p</option>
+                            <option value="1080p" selected>1080p</option>
                             <option value="4k">4K</option>
                         </select>
                     </div>
