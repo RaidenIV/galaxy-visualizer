@@ -267,3 +267,15 @@ if (frameSizeSelect) frameSizeSelect.addEventListener('change', (e) => {
     const el = document.getElementById('frame-size-value');
     if (el) el.textContent = e.target.options[e.target.selectedIndex].text;
 });
+
+// ── Collapsible section toggle (self-contained so it can't be blocked) ──
+(function () {
+    const row   = document.getElementById('capture-toggle-row');
+    const body  = document.getElementById('capture-body');
+    const arrow = document.getElementById('capture-arrow');
+    if (!row || !body || !arrow) return;
+    row.addEventListener('click', () => {
+        const collapsed = body.classList.toggle('collapsed');
+        arrow.classList.toggle('open', !collapsed);
+    });
+})();
