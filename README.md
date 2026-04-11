@@ -1,4 +1,4 @@
-# 🌌 Galaxy Visualizer
+# Galaxy Visualizer
 
 A real-time 3D audio-reactive galaxy visualizer built with Three.js. Load any audio file and watch the galaxy pulse, rotate, and fire lightning in sync with the music.
 
@@ -35,32 +35,6 @@ galaxy-visualizer/
     ├── controls.js     # All UI event listeners, preset manager, keyboard shortcuts
     └── main.js         # Entry point — animate loop, cinema camera paths
 ```
-
-## Hosting on GitHub Pages
-
-1. Push this folder to a GitHub repository
-2. Go to **Settings → Pages**
-3. Set source to **Deploy from a branch**, select `main` / `root`
-4. Your visualizer will be live at `https://<username>.github.io/<repo-name>/`
-
-> **Note:** GitHub Pages serves files over HTTPS, which is required for the Web Audio API and `MediaRecorder` to work correctly.
-
-## Running Locally
-
-Because the app uses ES modules, you need a local HTTP server (opening `index.html` directly as a `file://` URL will fail due to CORS restrictions on module imports).
-
-```bash
-# Python 3
-python3 -m http.server 8080
-
-# Node (npx)
-npx serve .
-
-# VS Code
-# Install the "Live Server" extension and click "Go Live"
-```
-
-Then open `http://localhost:8080` in your browser.
 
 ## Keyboard Shortcuts
 
