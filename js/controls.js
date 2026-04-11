@@ -747,6 +747,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── Section toggles ──
+setupSectionToggle('capture-toggle-row',  'capture-body',  'capture-arrow',  true);
 setupSectionToggle('galaxy-toggle-row',   'galaxy-body',   'galaxy-arrow',   true);
 setupSectionToggle('morph-toggle-row',    'morph-body',    'morph-arrow',    true);
 setupSectionToggle('cinema-toggle-row',   'cinema-body',   'cinema-arrow',   true);
