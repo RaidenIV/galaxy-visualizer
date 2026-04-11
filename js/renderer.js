@@ -111,21 +111,32 @@ function setComposerResolution(composer, cssW, cssH, pixelRatio) {
 }
 
 
+
 function getLiveBloomPixelRatio(cssW, cssH, livePixelRatio) {
     const mode = getVisualModeConfig();
-    const bloomScale = Math.min(1, Math.max(0.5, mode.bloomResolutionScale ?? 1.0));
-    const bloomPixelRatio = Math.min(livePixelRatio, Math.max(0.5, livePixelRatio * bloomScale));
+    const baseScale = Math.min(1, Math.max(0.5, mode.bloomResolutionScale ?? 1.0));
+    const presetScale = state.performancePreset === 'quality'
+        ? 1.0
+        : state.performancePreset === 'balanced'
+            ? 0.90
+            : 0.78;
+    const effectiveScale = state.visualMode === '4k'
+        ? Math.min(1, Math.max(0.5, baseScale * presetScale))
+        : 1.0;
+    const bloomPixelRatio = Math.min(livePixelRatio, Math.max(0.5, livePixelRatio * effectiveScale));
     state.liveBloomPixelRatio = bloomPixelRatio;
     return bloomPixelRatio;
 }
 
+
 function applyScaledCounts(baseGalaxy, baseStars, baseScatter, baseHalo, baseNebula) {
-    const density = getVisualModeConfig().densityMultiplier;
-    state.baseGalaxyCount    = Math.min(N_GALAXY,  Math.floor(baseGalaxy  * density));
-    state.activeStarCount    = Math.min(N_STARS,   Math.floor(baseStars   * density));
-    state.activeScatterCount = Math.min(N_SCATTER, Math.floor(baseScatter * density));
-    state.activeHaloCount    = Math.min(N_HALO,    Math.floor(baseHalo    * density));
-    state.activeNebulaCount  = Math.min(N_NEBULA,  Math.floor(baseNebula  * density));
+    const mode = getVisualModeConfig();
+    const layer = mode.layerDensityMultipliers || {};
+    state.baseGalaxyCount    = Math.min(N_GALAXY,  Math.floor(baseGalaxy  * (layer.galaxy  ?? mode.densityMultiplier ?? 1)));
+    state.activeStarCount    = Math.min(N_STARS,   Math.floor(baseStars   * (layer.stars   ?? mode.densityMultiplier ?? 1)));
+    state.activeScatterCount = Math.min(N_SCATTER, Math.floor(baseScatter * (layer.scatter ?? mode.densityMultiplier ?? 1)));
+    state.activeHaloCount    = Math.min(N_HALO,    Math.floor(baseHalo    * (layer.halo    ?? mode.densityMultiplier ?? 1)));
+    state.activeNebulaCount  = Math.min(N_NEBULA,  Math.floor(baseNebula  * (layer.nebula  ?? mode.densityMultiplier ?? 1)));
 }
 
 // ── Pixel ratio helper ──
