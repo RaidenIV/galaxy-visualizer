@@ -1,11 +1,7 @@
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass }     from 'three/addons/postprocessing/ShaderPass.js';
 import { downloadBlob } from './utils.js';
 import { state } from './state.js';
-import { camera, bloomPass, scene } from './renderer.js';
+import { camera, renderer, bloomComposer, finalComposer, bloomPass } from './renderer.js';
 import { BLOOM_LAYER } from './constants.js';
 
 // ── DOM refs ──
@@ -15,119 +11,105 @@ const frameBtn       = document.getElementById('frame-btn');
 const frameSizeSelect= document.getElementById('frame-size-select');
 const formatSelect   = document.getElementById('record-format-select');
 const resSelect      = document.getElementById('record-resolution-select');
+const orientSelect   = document.getElementById('record-orientation-select');
 const bitrateSelect  = document.getElementById('record-bitrate-select');
+const orientRow      = document.getElementById('record-orientation-row');
 const bitrateRow     = document.getElementById('record-bitrate-row');
 
-// ── Offscreen recording pipeline (shared by MP4 and WebM) ──
-// The main display renderer is NEVER modified during recording.
-let recCanvas        = null;
-let recRenderer      = null;
-let recBloomComposer = null;
-let recFinalComposer = null;
-let recBloomPass     = null;
-let recW = 0, recH = 0;
+// ── Saved renderer state ──
+let savedSize    = null;
+let savedAspect  = null;
+let savedPxRatio = null;
 
-function buildRecordingPipeline(w, h) {
-    recW = w; recH = h;
+// ── WebM state ──
+let webmRecorder = null;
+let webmChunks   = [];
 
-    recCanvas        = document.createElement('canvas');
-    recCanvas.width  = w;
-    recCanvas.height = h;
+// ── MP4 / Web Codecs state ──
+let mp4Muxer      = null;
+let mp4Video      = null;   // VideoEncoder
+let mp4Audio      = null;   // AudioEncoder
+let scriptNode    = null;   // ScriptProcessorNode
+let mp4FrameCount = 0;
+let mp4StartTime  = null;
+let mp4LastTime   = null;
+let audioTimestampUs = 0;
+export let isMP4Recording = false;
 
-    recRenderer = new THREE.WebGLRenderer({
-        canvas: recCanvas,
-        antialias: true,
-        preserveDrawingBuffer: true,
-        alpha: false,
-        powerPreference: 'high-performance',
-    });
-    recRenderer.setPixelRatio(1);
-    recRenderer.setSize(w, h);
-    recRenderer.setClearColor(0x000000);
-
-    // Bloom composer — sync initial params from live bloom pass
-    recBloomPass = new UnrealBloomPass(
-        new THREE.Vector2(w, h),
-        bloomPass.strength, bloomPass.radius, bloomPass.threshold
-    );
-    recBloomComposer = new EffectComposer(recRenderer);
-    recBloomComposer.renderToScreen = false;
-    recBloomComposer.addPass(new RenderPass(scene, camera));
-    recBloomComposer.addPass(recBloomPass);
-
-    // Final composer — composite bloom + base
-    const finalMat = new THREE.ShaderMaterial({
-        uniforms: {
-            baseTexture:  { value: null },
-            bloomTexture: { value: recBloomComposer.renderTarget2.texture },
-        },
-        vertexShader: `
-            varying vec2 vUv;
-            void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
-        `,
-        fragmentShader: `
-            uniform sampler2D baseTexture;
-            uniform sampler2D bloomTexture;
-            varying vec2 vUv;
-            void main() { gl_FragColor = texture2D(baseTexture,vUv) + texture2D(bloomTexture,vUv); }
-        `,
-        transparent: true,
-    });
-    recFinalComposer = new EffectComposer(recRenderer);
-    recFinalComposer.addPass(new RenderPass(scene, camera));
-    recFinalComposer.addPass(new ShaderPass(finalMat, 'baseTexture'));
-}
-
-function destroyRecordingPipeline() {
-    if (recRenderer) { recRenderer.dispose(); recRenderer = null; }
-    recCanvas = recBloomComposer = recFinalComposer = recBloomPass = null;
-    recW = recH = 0;
-}
-
-// Render one frame to the offscreen canvas.
-// Saves/restores camera.aspect so the main display is unaffected.
-function renderOffscreen() {
-    // Sync live bloom params every frame so the recording matches the display
-    recBloomPass.strength  = bloomPass.strength;
-    recBloomPass.radius    = bloomPass.radius;
-    recBloomPass.threshold = bloomPass.threshold;
-
-    const savedAspect = camera.aspect;
-    camera.aspect = recW / recH;
-    camera.updateProjectionMatrix();
-
-    camera.layers.set(BLOOM_LAYER);
-    recBloomComposer.render();
-    camera.layers.set(0);
-    recFinalComposer.render();
-
-    camera.aspect = savedAspect;
-    camera.updateProjectionMatrix();
+// ── Lazy-load mp4-muxer ──
+let Mp4MuxerLib = null;
+async function loadMp4Muxer() {
+    if (!Mp4MuxerLib) Mp4MuxerLib = await import('https://cdn.jsdelivr.net/npm/mp4-muxer@5/+esm');
+    return Mp4MuxerLib;
 }
 
 // ── Dimensions ──
 function getRecordingDimensions() {
-    const selected = resSelect ? resSelect.value : '4k';
-    return selected === '4k'
-        ? { w: 3840, h: 2160 }
-        : { w: 1920, h: 1080 };
+    const res    = resSelect   ? resSelect.value   : 'current';
+    const orient = orientSelect? orientSelect.value : 'landscape';
+    if (res === 'current') return { w: Math.floor(window.innerWidth), h: Math.floor(window.innerHeight) };
+    let w = res === '4k' ? 3840 : 1920;
+    let h = res === '4k' ? 2160 : 1080;
+    if (orient === 'portrait') [w, h] = [h, w];
+    return { w, h };
 }
 
 function pickAvcCodec(w, h) {
     return (w > 1920 || h > 1920) ? 'avc1.640033' : 'avc1.640028';
 }
 
-// ── PNG frame export (one-shot: uses the offscreen capture pipeline) ──
+// ── Renderer resize helpers ──
+function beginResolutionOverride(w, h) {
+    savedPxRatio = renderer.getPixelRatio();
+    savedSize    = new THREE.Vector2();
+    renderer.getSize(savedSize);
+    savedAspect  = camera.aspect;
+
+    renderer.setPixelRatio(1);
+    renderer.setSize(w, h, false);
+    // Explicitly set canvas pixel dimensions — belt-and-suspenders for Three.js r128
+    renderer.domElement.width  = w;
+    renderer.domElement.height = h;
+
+    bloomComposer.setSize(w, h);
+    finalComposer.setSize(w, h);
+    bloomPass.resolution = new THREE.Vector2(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+}
+
+function endResolutionOverride() {
+    if (!savedSize) return;
+    renderer.setPixelRatio(savedPxRatio);
+    renderer.setSize(savedSize.x, savedSize.y, false);
+    renderer.domElement.width  = savedSize.x;
+    renderer.domElement.height = savedSize.y;
+    bloomComposer.setSize(savedSize.x, savedSize.y);
+    finalComposer.setSize(savedSize.x, savedSize.y);
+    bloomPass.resolution = savedSize.clone();
+    camera.aspect = savedAspect;
+    camera.updateProjectionMatrix();
+    savedSize = savedPxRatio = savedAspect = null;
+}
+
+// ── PNG frame export ──
+function renderForCapture() {
+    camera.layers.set(BLOOM_LAYER);
+    bloomComposer.render();
+    camera.layers.set(0);
+    finalComposer.render();
+}
+
 async function exportFrameAtSize(w, h) {
-    buildRecordingPipeline(w, h);
+    beginResolutionOverride(w, h);
     try {
-        renderOffscreen();
+        renderForCapture();
         await new Promise((resolve) => {
-            const name = `galaxy_frame_${w}x${h}_${Date.now()}.png`;
             const finish = (blob) => {
+                const name = `galaxy_frame_${w}x${h}_${Date.now()}.png`;
                 if (!blob) {
                     const a = document.createElement('a');
-                    a.href = recCanvas.toDataURL('image/png');
+                    a.href = renderer.domElement.toDataURL('image/png');
                     a.download = name;
                     document.body.appendChild(a); a.click(); a.remove();
                 } else {
@@ -135,18 +117,16 @@ async function exportFrameAtSize(w, h) {
                 }
                 resolve();
             };
-            if (recCanvas.toBlob) recCanvas.toBlob(finish, 'image/png');
+            if (renderer.domElement.toBlob) renderer.domElement.toBlob(finish, 'image/png');
             else finish(null);
         });
     } finally {
-        destroyRecordingPipeline();
+        endResolutionOverride();
+        renderForCapture();
     }
 }
 
 // ── WebM recording ──
-let webmRecorder = null;
-let webmChunks   = [];
-
 function pickWebMType() {
     const c = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
     return c.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
@@ -158,20 +138,17 @@ async function startWebMRecording() {
     if (state.audioContext && state.audioContext.state === 'suspended') {
         try { await state.audioContext.resume(); } catch (_) {}
     }
-
-    buildRecordingPipeline(w, h);
-
-    const videoTracks = recCanvas.captureStream(60).getVideoTracks();
+    beginResolutionOverride(w, h);
+    const videoTracks = renderer.domElement.captureStream(60).getVideoTracks();
     const audioTracks = (state.mediaDest && state.mediaDest.stream)
         ? state.mediaDest.stream.getAudioTracks() : [];
     const stream   = new MediaStream([...videoTracks, ...audioTracks]);
     const mimeType = pickWebMType();
-
     webmChunks = [];
     webmRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     webmRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) webmChunks.push(e.data); };
     webmRecorder.onstop = () => {
-        destroyRecordingPipeline();
+        endResolutionOverride();
         const blob = new Blob(webmChunks, { type: mimeType || 'video/webm' });
         downloadBlob(blob, `galaxy_${Date.now()}.webm`);
         captureStatus.textContent = 'WebM saved.';
@@ -186,38 +163,43 @@ async function startWebMRecording() {
 
 function stopWebMRecording() { if (webmRecorder) webmRecorder.stop(); }
 
-// ── Audio encoding (MP4 only) ──
-let mp4Audio     = null;
-let scriptNode   = null;
-let audioTsUs    = 0;
-
+// ── Audio encoding (ScriptProcessorNode → AudioEncoder → muxer) ──
 async function startAudioEncoding(sampleRate) {
     if (!window.AudioEncoder || !state.audioContext || !state.gainNode) return false;
-    const cfg = { codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 };
-    if (!(await AudioEncoder.isConfigSupported(cfg)).supported) return false;
 
-    audioTsUs = 0;
-    mp4Audio  = new AudioEncoder({
+    const cfg = { codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 };
+    const { supported } = await AudioEncoder.isConfigSupported(cfg);
+    if (!supported) return false;
+
+    audioTimestampUs = 0;
+    mp4Audio = new AudioEncoder({
         output: (chunk, meta) => mp4Muxer && mp4Muxer.addAudioChunk(chunk, meta),
         error:  (e) => console.error('AudioEncoder:', e),
     });
     mp4Audio.configure(cfg);
 
-    scriptNode = state.audioContext.createScriptProcessor(4096, 2, 2);
+    // ScriptProcessorNode taps raw PCM from the gain node
+    const BUF = 4096;
+    scriptNode = state.audioContext.createScriptProcessor(BUF, 2, 2);
     scriptNode.onaudioprocess = (e) => {
         if (!mp4Audio || mp4Audio.state === 'closed') return;
         const n  = e.inputBuffer.length;
         const sr = e.inputBuffer.sampleRate;
+        // f32-planar: left channel then right channel
         const data = new Float32Array(n * 2);
         data.set(e.inputBuffer.getChannelData(0), 0);
         data.set(e.inputBuffer.getChannelData(1), n);
-        const ad = new AudioData({ format: 'f32-planar', sampleRate: sr, numberOfFrames: n, numberOfChannels: 2, timestamp: audioTsUs, data });
-        mp4Audio.encode(ad);
-        ad.close();
-        audioTsUs += Math.round((n / sr) * 1_000_000);
+        const audioData = new AudioData({
+            format: 'f32-planar', sampleRate: sr,
+            numberOfFrames: n, numberOfChannels: 2,
+            timestamp: audioTimestampUs, data,
+        });
+        mp4Audio.encode(audioData);
+        audioData.close();
+        audioTimestampUs += Math.round((n / sr) * 1_000_000);
     };
     state.gainNode.connect(scriptNode);
-    scriptNode.connect(state.audioContext.destination);
+    scriptNode.connect(state.audioContext.destination); // ScriptProcessorNode needs an output
     return true;
 }
 
@@ -225,20 +207,7 @@ function stopAudioEncoding() {
     if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
 }
 
-// ── MP4 recording ──
-let mp4Muxer      = null;
-let mp4Video      = null;
-let mp4FrameCount = 0;
-let mp4StartTime  = null;
-let mp4LastTime   = null;
-export let isMP4Recording = false;
-
-let Mp4MuxerLib = null;
-async function loadMp4Muxer() {
-    if (!Mp4MuxerLib) Mp4MuxerLib = await import('https://cdn.jsdelivr.net/npm/mp4-muxer@5/+esm');
-    return Mp4MuxerLib;
-}
-
+// ── MP4 recording via Web Codecs + mp4-muxer ──
 async function startMP4Recording() {
     if (!window.VideoEncoder) {
         captureStatus.textContent = 'MP4 requires Chrome 94+ or Edge. Try WebM instead.'; return;
@@ -248,23 +217,24 @@ async function startMP4Recording() {
     const bitrate     = bitrateMbps * 1_000_000;
     const codec       = pickAvcCodec(w, h);
 
-    const vOk = await VideoEncoder.isConfigSupported({ codec, width: w, height: h, bitrate, framerate: 60 });
-    if (!vOk.supported) {
-        captureStatus.textContent = `Codec unsupported at ${w}×${h}. Try a lower resolution.`; return;
+    const vSupport = await VideoEncoder.isConfigSupported({ codec, width: w, height: h, bitrate, framerate: 60 });
+    if (!vSupport.supported) {
+        captureStatus.textContent = `Codec not supported at ${w}×${h}. Try a lower resolution.`; return;
     }
 
     const { Muxer, ArrayBufferTarget } = await loadMp4Muxer();
+
+    // Probe audio support before committing to muxer config
     const sampleRate = state.audioContext ? state.audioContext.sampleRate : 48000;
-    const aOk = window.AudioEncoder && state.gainNode &&
+    const hasAudio   = window.AudioEncoder && state.gainNode &&
         (await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 })).supported;
 
-    // Build offscreen pipeline AFTER all async checks — display never changes
-    buildRecordingPipeline(w, h);
+    beginResolutionOverride(w, h);
 
     mp4Muxer = new Muxer({
         target: new ArrayBufferTarget(),
         video:  { codec: 'avc', width: w, height: h },
-        ...(aOk && { audio: { codec: 'aac', sampleRate, numberOfChannels: 2 } }),
+        ...(hasAudio && { audio: { codec: 'aac', sampleRate, numberOfChannels: 2 } }),
         fastStart: 'in-memory',
     });
 
@@ -274,12 +244,12 @@ async function startMP4Recording() {
     });
     mp4Video.configure({ codec, width: w, height: h, bitrate, framerate: 60, latencyMode: 'quality' });
 
-    if (aOk) await startAudioEncoding(sampleRate);
+    if (hasAudio) await startAudioEncoding(sampleRate);
 
     mp4FrameCount = 0; mp4StartTime = null; mp4LastTime = null;
     isMP4Recording = true; state.isRecording = true;
     recordBtn.textContent = '■ Stop Recording';
-    captureStatus.textContent = `Recording MP4 (${w}×${h} · ${bitrateMbps} Mbps${aOk ? ' · audio' : ''})…`;
+    captureStatus.textContent = `Recording MP4 (${w}×${h} · ${bitrateMbps} Mbps${hasAudio ? ' · audio' : ''})…`;
 }
 
 async function stopMP4Recording() {
@@ -299,34 +269,31 @@ async function stopMP4Recording() {
         captureStatus.textContent = 'Export failed: ' + e.message;
     } finally {
         mp4Video = null; mp4Muxer = null;
-        destroyRecordingPipeline();
+        endResolutionOverride();
         state.isRecording = false;
         recordBtn.textContent = '● Start Recording';
     }
 }
 
-// ── captureFrame — called by main.js every frame after the main render ──
+// Called by main.js every frame after render
 export function captureFrame(now) {
-    if (!state.isRecording || !recCanvas) return;
-
-    // Render the scene to the offscreen canvas at capture resolution.
-    // The main display renderer is completely untouched.
-    renderOffscreen();
-
-    // MP4: encode the offscreen frame
-    if (isMP4Recording && mp4Video && mp4Video.encodeQueueSize <= 15) {
-        if (mp4StartTime === null) { mp4StartTime = now; mp4LastTime = now; }
-        const timestampUs = Math.round((now - mp4StartTime) * 1000);
-        const durationUs  = Math.max(1, Math.round((now - mp4LastTime) * 1000));
-        mp4LastTime = now;
-        let frame;
-        try { frame = new VideoFrame(recCanvas, { timestamp: timestampUs, duration: durationUs }); }
-        catch (_) { return; }
-        mp4Video.encode(frame, { keyFrame: mp4FrameCount % 60 === 0 });
-        frame.close();
-        mp4FrameCount++;
+    if (!isMP4Recording || !mp4Video || mp4Video.encodeQueueSize > 15) return;
+    if (mp4StartTime === null) { mp4StartTime = now; mp4LastTime = now; }
+    const timestampUs = Math.round((now - mp4StartTime) * 1000);
+    const durationUs  = Math.max(1, Math.round((now - mp4LastTime) * 1000));
+    mp4LastTime = now;
+    let frame;
+    try {
+        frame = new VideoFrame(renderer.domElement, { timestamp: timestampUs, duration: durationUs });
+    } catch (_) { return; }
+    mp4Video.encode(frame, { keyFrame: mp4FrameCount % 60 === 0 });
+    frame.close();
+    mp4FrameCount++;
+    // Update status every 60 frames
+    if (mp4FrameCount % 60 === 0) {
+        const secs = Math.round((now - mp4StartTime) / 1000);
+        captureStatus.textContent = captureStatus.textContent.replace(/\d+s$/, '') + `${secs}s`;
     }
-    // WebM: MediaRecorder captures from recCanvas.captureStream() automatically
 }
 
 // ── Buttons ──
@@ -340,39 +307,38 @@ recordBtn.addEventListener('click', async () => {
 });
 
 frameBtn.addEventListener('click', async () => {
-    const preset = frameSizeSelect ? frameSizeSelect.value : '4k';
-    let w = 1920, h = 1080;
-    if (preset === '4k') { w = 3840; h = 2160; }
+    const preset = frameSizeSelect ? frameSizeSelect.value : 'current';
+    let w = Math.floor(window.innerWidth), h = Math.floor(window.innerHeight);
+    if (preset === '1080p') { w = 1920; h = 1080; }
+    else if (preset === '4k')   { w = 3840; h = 2160; }
     captureStatus.textContent = `Saving frame (${w}×${h})…`;
     try { await exportFrameAtSize(w, h); captureStatus.textContent = 'Frame saved.'; }
     catch (e) { captureStatus.textContent = 'Frame capture failed.'; }
 });
 
 // ── UI sync ──
-function syncResolutionUI() {
-    const valueEl = document.getElementById('record-resolution-value');
-    if (valueEl && resSelect) valueEl.textContent = resSelect.options[resSelect.selectedIndex].text;
+function syncOrientRow() {
+    if (orientRow) orientRow.style.display = (resSelect && resSelect.value === 'current') ? 'none' : '';
 }
-function syncFrameSizeUI() {
-    const el = document.getElementById('frame-size-value');
-    if (el && frameSizeSelect) el.textContent = frameSizeSelect.options[frameSizeSelect.selectedIndex].text;
-}
-syncResolutionUI();
-syncFrameSizeUI();
+if (resSelect) { resSelect.addEventListener('change', syncOrientRow); syncOrientRow(); }
 
 function syncFormatUI() {
     const isMp4 = !formatSelect || formatSelect.value === 'mp4';
     if (bitrateRow) bitrateRow.style.display = isMp4 ? '' : 'none';
     const noteEl = document.getElementById('capture-note');
     if (noteEl) noteEl.textContent = isMp4
-        ? 'MP4: Chrome/Edge · H.264 · export resolution set above'
-        : 'WebM: all browsers · VP9 · export resolution set above';
+        ? 'MP4: Chrome/Edge · H.264 · audio included if playing'
+        : 'WebM: all browsers · VP9 · includes audio';
+    syncOrientRow();
 }
 if (formatSelect) { formatSelect.addEventListener('change', syncFormatUI); syncFormatUI(); }
-if (resSelect) resSelect.addEventListener('change', syncResolutionUI);
-if (frameSizeSelect) frameSizeSelect.addEventListener('change', syncFrameSizeUI);
 
-// ── Collapsible toggle ──
+if (frameSizeSelect) frameSizeSelect.addEventListener('change', (e) => {
+    const el = document.getElementById('frame-size-value');
+    if (el) el.textContent = e.target.options[e.target.selectedIndex].text;
+});
+
+// ── Collapsible section toggle ──
 (function () {
     const row   = document.getElementById('capture-toggle-row');
     const body  = document.getElementById('capture-body');
