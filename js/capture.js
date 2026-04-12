@@ -914,23 +914,32 @@ async function stopPngSequenceExport(cancelled = false) {
             state.audioElement.currentTime = exportRange?.start ?? 0;
         }
 
-        if (!cancelled && !pngDirHandle && pngFrames.length > 0) {
-            updateRenderProgressOverlay(1, 0, 0, 'Compressing frames…');
-            captureStatus.textContent = `Compressing ${pngFrames.length} frames…`;
-            const { zipSync } = await loadFflate();
-            // Wait for any in-flight toBlob calls
-            while (pngPendingWrites > 0) await new Promise(r => setTimeout(r, 50));
-            const fileMap = {};
-            for (const { name, data } of pngFrames) fileMap[name] = [data, { level: 0 }];
-            const zipped  = zipSync(fileMap);
-            const zipBlob = new Blob([zipped], { type: 'application/zip' });
-            downloadBlob(zipBlob, `galaxy_frames_${Date.now()}.zip`);
-            captureStatus.textContent = `PNG sequence saved (${pngFrames.length} frames · ${formatBytes(zipBlob.size)}).`;
-        } else if (!cancelled && pngDirHandle) {
-            while (pngPendingWrites > 0) await new Promise(r => setTimeout(r, 50));
-            captureStatus.textContent = `PNG sequence saved to folder (${pngFrameCount} frames).`;
-        } else {
+        if (cancelled) {
             captureStatus.textContent = 'PNG sequence export cancelled.';
+        } else {
+            // ── Wait for all async toBlob callbacks to complete BEFORE inspecting results.
+            // toBlob is asynchronous — pngFrames may still be empty even though frames
+            // were enqueued (pngPendingWrites > 0). The old code checked pngFrames.length
+            // before waiting, which always fell to the "cancelled" else branch and
+            // discarded every frame that had been captured.
+            updateRenderProgressOverlay(1, 0, 0, 'Finalising…');
+            while (pngPendingWrites > 0) await new Promise(r => setTimeout(r, 50));
+
+            if (!pngDirHandle && pngFrames.length > 0) {
+                updateRenderProgressOverlay(1, 0, 0, 'Compressing frames…');
+                captureStatus.textContent = `Compressing ${pngFrames.length} frames…`;
+                const { zipSync } = await loadFflate();
+                const fileMap = {};
+                for (const { name, data } of pngFrames) fileMap[name] = [data, { level: 0 }];
+                const zipped  = zipSync(fileMap);
+                const zipBlob = new Blob([zipped], { type: 'application/zip' });
+                downloadBlob(zipBlob, `galaxy_frames_${Date.now()}.zip`);
+                captureStatus.textContent = `PNG sequence saved (${pngFrames.length} frames · ${formatBytes(zipBlob.size)}).`;
+            } else if (pngDirHandle) {
+                captureStatus.textContent = `PNG sequence saved to folder (${pngFrameCount} frames).`;
+            } else {
+                captureStatus.textContent = 'PNG sequence complete — no frames were captured.';
+            }
         }
     } catch (e) {
         captureStatus.textContent = 'PNG sequence export failed: ' + e.message;
