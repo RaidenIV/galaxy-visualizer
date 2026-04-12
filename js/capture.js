@@ -726,28 +726,42 @@ export function captureFrame(now) {
     renderOffscreen();
 
     // ── PNG sequence frame capture (#10) ──
-    // No wall-clock gate: capture every animate() call. The gate can never produce
-    // frames faster than the GPU renders them, so gating at e.g. 60 fps when the GPU
-    // delivers 10 fps just gives 10 fps worth of frames anyway. Without the gate we
-    // capture everything the GPU produces and the sequence covers the full audio range.
+    // Frame duplication: use audio playback position to determine how many frame slots
+    // have elapsed since the last render. If the GPU renders at 12 fps but the target
+    // is 60 fps, each rendered image is saved ~5 times (once per elapsed slot) so the
+    // output always contains exactly duration × fps frames — the same strategy
+    // professional capture tools use when rendering can't keep up with real time.
     if (isPngSequence) {
-        const frameNum = pngFrameCount.toString().padStart(6, '0');
-        const name = `frame_${frameNum}.png`;
-        pngPendingWrites++;
-        recCanvas.toBlob(async (blob) => {
-            try {
-                if (pngDirHandle) {
-                    const fh = await pngDirHandle.getFileHandle(name, { create: true });
-                    const wr = await fh.createWritable();
-                    await wr.write(blob);
-                    await wr.close();
-                } else {
-                    const data = new Uint8Array(await blob.arrayBuffer());
-                    pngFrames.push({ name, data });
-                }
-            } catch (_) {} finally { pngPendingWrites--; }
-        }, 'image/png');
-        pngFrameCount++;
+        const audioSec = state.audioElement
+            ? Math.max(0, state.audioElement.currentTime - (exportRange?.start ?? 0))
+            : pngFrameCount / mp4FrameRate;
+        const totalFrames = Math.ceil((exportRange.end - exportRange.start) * mp4FrameRate);
+        const expectedFrame = Math.min(totalFrames - 1, Math.floor(audioSec * mp4FrameRate));
+        // Number of slots to fill: at least 1, up to however many audio has advanced past
+        const slotsToFill = Math.max(1, expectedFrame - pngFrameCount + 1);
+
+        for (let s = 0; s < slotsToFill; s++) {
+            const frameNum = (pngFrameCount + s).toString().padStart(6, '0');
+            const name = `frame_${frameNum}.png`;
+            pngPendingWrites++;
+            // All slotsToFill calls read the same canvas state → identical images,
+            // which is correct: the GPU rendered one frame, we duplicate it to fill
+            // the elapsed time at the target frame rate.
+            recCanvas.toBlob(async (blob) => {
+                try {
+                    if (pngDirHandle) {
+                        const fh = await pngDirHandle.getFileHandle(name, { create: true });
+                        const wr = await fh.createWritable();
+                        await wr.write(blob);
+                        await wr.close();
+                    } else {
+                        const data = new Uint8Array(await blob.arrayBuffer());
+                        pngFrames.push({ name, data });
+                    }
+                } catch (_) {} finally { pngPendingWrites--; }
+            }, 'image/png');
+        }
+        pngFrameCount += slotsToFill;
 
         if (exportRange && state.audioElement) {
             const t = Math.max(exportRange.start, Math.min(exportRange.end, state.audioElement.currentTime));
