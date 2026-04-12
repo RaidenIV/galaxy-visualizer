@@ -23,7 +23,7 @@ let popupZoomEnd   = 1;
 let popupPeaks     = null;
 let popupAnimRaf   = null;
 let popupResizeObs = null;
-let popupForceRestartFromLoopStart = false;
+let popupForceRestartFromLoopStart = true;
 let popupDocMouseMoveHandler = null;
 let popupDocMouseUpHandler = null;
 let popupDocKeydownHandler = null;
@@ -127,7 +127,7 @@ function buildPopupHTML() {
       </div>
       <div class="loop-option-row">
         <label class="loop-check-label">
-          <input type="checkbox" id="popup-force-start-toggle" class="loop-check-input">
+          <input type="checkbox" id="popup-force-start-toggle" class="loop-check-input" checked>
           <span class="loop-check-box"></span>
           <span class="loop-check-text">Always start preview from loop start</span>
         </label>
@@ -209,6 +209,7 @@ function wirePopupEvents(overlay) {
         $('popup-loop-switch').classList.toggle('on', popupLoopOn);
         if (popupSource && popupIsPlaying) { popupSource.loop = popupLoopOn; if (popupLoopOn) { popupSource.loopStart = popupLoopStart; popupSource.loopEnd = popupLoopEnd; } }
     });
+    $('popup-force-start-toggle').checked = popupForceRestartFromLoopStart;
     $('popup-force-start-toggle').addEventListener('change', () => {
         popupForceRestartFromLoopStart = $('popup-force-start-toggle').checked;
     });

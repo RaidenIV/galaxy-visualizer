@@ -84,7 +84,7 @@ let renderProgressSub = null;
 let renderProgressCancelBtn = null;
 let exportEstimatedBytes = 0;
 let silentMonitorGain = null;
-let exportElementMutedBefore = false;
+let exportGainBeforeExport = 1;
 let liveGainWasConnectedBeforeExport = false;
 
 function ensureRenderProgressOverlay() {
@@ -431,16 +431,22 @@ async function startAudioEncoding(sampleRate) {
     scriptNode = state.audioContext.createScriptProcessor(4096, 2, 2);
     scriptNode.onaudioprocess = (e) => {
         if (!mp4Audio || mp4Audio.state === 'closed') return;
-        const n = e.inputBuffer.length;
-        const sr = e.inputBuffer.sampleRate;
-        const data = new Float32Array(n * 2);
-        data.set(e.inputBuffer.getChannelData(0), 0);
-        data.set(e.inputBuffer.getChannelData(1), n);
+        const input = e.inputBuffer;
+        const n = input.length;
+        const sr = input.sampleRate;
+        const ch = Math.min(2, input.numberOfChannels || 2);
+        const data = new Float32Array(n * ch);
+        const ch0 = input.getChannelData(0);
+        const ch1 = ch > 1 ? input.getChannelData(1) : ch0;
+        for (let i = 0, j = 0; i < n; i++) {
+            data[j++] = ch0[i];
+            if (ch > 1) data[j++] = ch1[i];
+        }
         const ad = new AudioData({
-            format: 'f32-planar',
+            format: 'f32',
             sampleRate: sr,
             numberOfFrames: n,
-            numberOfChannels: 2,
+            numberOfChannels: ch,
             timestamp: audioTsUs,
             data,
         });
@@ -468,8 +474,8 @@ function stopAudioEncoding() {
 }
 
 function muteLiveAudioForExport() {
-    exportElementMutedBefore = !!state.audioElement?.muted;
-    if (state.audioElement) state.audioElement.muted = true;
+    exportGainBeforeExport = state.gainNode ? state.gainNode.gain.value : 1;
+    if (state.gainNode) state.gainNode.gain.value = 0;
     liveGainWasConnectedBeforeExport = !!(state.gainNode && state.gainNodeConnected);
     if (state.gainNode && state.audioContext?.destination && state.gainNodeConnected) {
         try { state.gainNode.disconnect(state.audioContext.destination); } catch (_) {}
@@ -478,7 +484,7 @@ function muteLiveAudioForExport() {
 }
 
 function restoreLiveAudioAfterExport() {
-    if (state.audioElement) state.audioElement.muted = exportElementMutedBefore;
+    if (state.gainNode) state.gainNode.gain.value = exportGainBeforeExport;
     if (state.gainNode && state.audioContext?.destination && liveGainWasConnectedBeforeExport && !state.gainNodeConnected) {
         try { state.gainNode.connect(state.audioContext.destination); state.gainNodeConnected = true; } catch (_) {}
     }
