@@ -498,14 +498,16 @@ export function rotateGalaxyParticles(rotSpeed) {
 
     // Central sphere
     const sphereGeo = new THREE.SphereGeometry(0.09, 24, 24);
-    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
-    const centralSphere = new THREE.Mesh(sphereGeo, sphereMat);
-    scene.add(centralSphere);
-    centralSphere.layers.enable(BLOOM_LAYER);
+    const centerSphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+    const centerSphere = new THREE.Mesh(sphereGeo, centerSphereMat);
+    scene.add(centerSphere);
+    centerSphere.layers.enable(BLOOM_LAYER);
     // Export for animate loop
-    galaxyGroup._sphereMat = sphereMat;
-    galaxyGroup._sphere    = centralSphere;
+    galaxyGroup._sphereMat = centerSphereMat;
+    galaxyGroup._sphere    = centerSphere;
+    sphereMat = centerSphereMat;
+    centralSphere = centerSphere;
 }
 
-export const centralSphere = galaxyGroup._sphere;
-export const sphereMat     = galaxyGroup._sphereMat;
+export let centralSphere = null;
+export let sphereMat     = null;
