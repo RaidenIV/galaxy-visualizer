@@ -28,6 +28,8 @@ export const state = {
 
     // Performance & rendering
     performancePreset:  'quality',
+    liveRenderPixelRatio: 1.0,
+    liveBloomPixelRatio:  1.0,
     baseGalaxyCount:    75000,
     activeGalaxyCount:  75000,
     activeStarCount:    20000,
@@ -86,6 +88,9 @@ export const state = {
     analyser:          null,
     audioElement:      null,
     audioSource:       null,
+    audioBuffer:       null,
+    audioFileName:     '',
+    audioObjectUrl:    null,
     gainNode:          null,
     gainNodeConnected: false,
     mediaDest:         null,
@@ -93,6 +98,11 @@ export const state = {
     audioLoaded:       false,
     isPlaying:         false,
     isMuted:           false,
+    detectedBpm:       0,
+    loopEnabled:       false,
+    loopStart:         0,
+    loopEnd:           0,
+    loopBars:          4,
 
     // Capture / recording
     mediaRecorder:  null,

@@ -2,11 +2,57 @@
 // CONSTANTS — pure, never mutated
 // ============================================================
 
-export const N_GALAXY  = 75000;
-export const N_STARS   = 20000;
-export const N_SCATTER = 10000;
-export const N_HALO    = 12000;
-export const N_NEBULA  = 4500;
+export const BASE_GALAXY_COUNT  = 75000;
+export const BASE_STAR_COUNT    = 20000;
+export const BASE_SCATTER_COUNT = 10000;
+export const BASE_HALO_COUNT    = 12000;
+export const BASE_NEBULA_COUNT  = 4500;
+
+
+export const VISUAL_MODES = {
+    '1080p': {
+        label: '1080p',
+        width: 1920,
+        height: 1080,
+        densityMultiplier: 1.0,
+        bloomResolutionScale: 1.0,
+        layerDensityMultipliers: {
+            galaxy: 1.0,
+            stars: 1.0,
+            scatter: 1.0,
+            halo: 1.0,
+            nebula: 1.0,
+        },
+    },
+    '4k': {
+        label: '4K',
+        width: 3840,
+        height: 2160,
+        densityMultiplier: 4.0,
+        bloomResolutionScale: 0.68,
+        layerDensityMultipliers: {
+            galaxy: 4.0,
+            stars: 1.80,
+            scatter: 1.25,
+            halo: 1.65,
+            nebula: 1.35,
+        },
+    },
+};
+
+const MAX_LAYER_MULTIPLIERS = {
+    galaxy:  Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.galaxy  ?? mode.densityMultiplier ?? 1)),
+    stars:   Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.stars   ?? mode.densityMultiplier ?? 1)),
+    scatter: Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.scatter ?? mode.densityMultiplier ?? 1)),
+    halo:    Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.halo    ?? mode.densityMultiplier ?? 1)),
+    nebula:  Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.nebula  ?? mode.densityMultiplier ?? 1)),
+};
+
+export const N_GALAXY  = Math.floor(BASE_GALAXY_COUNT  * MAX_LAYER_MULTIPLIERS.galaxy);
+export const N_STARS   = Math.floor(BASE_STAR_COUNT    * MAX_LAYER_MULTIPLIERS.stars);
+export const N_SCATTER = Math.floor(BASE_SCATTER_COUNT * MAX_LAYER_MULTIPLIERS.scatter);
+export const N_HALO    = Math.floor(BASE_HALO_COUNT    * MAX_LAYER_MULTIPLIERS.halo);
+export const N_NEBULA  = Math.floor(BASE_NEBULA_COUNT  * MAX_LAYER_MULTIPLIERS.nebula);
 
 export const BLOOM_LAYER = 1;
 export const CORE_CENTER_BLOOM_REDUCTION = 0.5;
@@ -70,6 +116,7 @@ export const GALAXY_COLORMAPS = [
     { name: 'Deep Ocean',     stops: [[0.00,[0.00,0.01,0.08]],[0.22,[0.00,0.12,0.30]],[0.50,[0.00,0.42,0.62]],[0.78,[0.18,0.78,0.84]],[1.00,[0.88,1.00,0.98]]] },
     { name: 'Rose Gold',      stops: [[0.00,[0.04,0.02,0.03]],[0.28,[0.22,0.10,0.16]],[0.56,[0.62,0.32,0.38]],[0.82,[0.92,0.70,0.58]],[1.00,[1.00,0.95,0.90]]] },
     { name: 'Bone',           stops: [[0.00,[0.00,0.00,0.02]],[0.30,[0.22,0.24,0.28]],[0.62,[0.58,0.64,0.66]],[0.84,[0.84,0.88,0.82]],[1.00,[1.00,1.00,0.90]]] },
+    { name: 'Cool Blue',      stops: [[0.00,[0.00,0.01,0.06]],[0.24,[0.02,0.10,0.28]],[0.52,[0.06,0.34,0.72]],[0.80,[0.34,0.72,1.00]],[1.00,[0.92,0.98,1.00]]] },
     { name: 'Jet',            stops: [[0.00,[0.00,0.00,0.50]],[0.35,[0.00,0.70,1.00]],[0.50,[0.50,1.00,0.50]],[0.70,[1.00,1.00,0.00]],[1.00,[0.50,0.00,0.00]]] },
     { name: 'Twilight Mint',  stops: [[0.00,[0.04,0.02,0.10]],[0.28,[0.18,0.12,0.40]],[0.56,[0.30,0.56,0.72]],[0.82,[0.56,0.92,0.78]],[1.00,[0.95,1.00,0.98]]] },
 ];
@@ -82,6 +129,7 @@ export const GALAXY_TYPES = {
     grand:      { armCount: 2,  armTwist: 1.60, label: 'Grand Design Spiral' },
     flocculent: { armCount: 6,  armTwist: 0.55, label: 'Flocculent Spiral'  },
     multiarm:   { armCount: 5,  armTwist: 1.00, label: 'Multi-Arm Spiral'   },
+    tidal:      { armCount: 2,  armTwist: 2.05, label: 'Tidal Spiral'       },
     ring:       { armCount: 0,  armTwist: 0.00, label: 'Ring Galaxy'        },
     lenticular: { armCount: 0,  armTwist: 0.00, label: 'Lenticular (S0)'    },
     elliptical: { armCount: 0,  armTwist: 0.00, label: 'Elliptical'         },
