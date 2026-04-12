@@ -150,34 +150,6 @@ document.getElementById('galaxy-stars-slider').addEventListener('input', (e) => 
     document.getElementById('galaxy-stars-value').textContent = e.target.value + '%';
     updateGalaxyDrawRange();
 });
-const visualModeSelect = document.getElementById('visual-mode-select');
-function applyCurrentPerformanceCounts() {
-    updateGalaxyDrawRange();
-    starGeo.setDrawRange(0, state.activeStarCount);
-    scatterGeo.setDrawRange(0, state.activeScatterCount);
-    haloGeo.setDrawRange(0, state.activeHaloCount);
-    nebulaGeo.setDrawRange(0, state.activeNebulaCount);
-}
-function syncVisualModeUI() {
-    const label = state.visualMode === '4k' ? '4K' : '1080p';
-    if (visualModeSelect) visualModeSelect.value = state.visualMode;
-    const liveValueEl = document.getElementById('visual-mode-value');
-    if (liveValueEl) liveValueEl.textContent = label;
-    const captureModeSelect = document.getElementById('record-resolution-select');
-    if (captureModeSelect) {
-        captureModeSelect.value = state.visualMode;
-        captureModeSelect.disabled = true;
-    }
-    const captureValueEl = document.getElementById('record-resolution-value');
-    if (captureValueEl) captureValueEl.textContent = label;
-    window.dispatchEvent(new Event('galaxy-visual-mode-change'));
-}
-if (visualModeSelect) visualModeSelect.addEventListener('change', (e) => {
-    state.visualMode = e.target.value === '4k' ? '4k' : '1080p';
-    syncVisualModeUI();
-    applyPerformancePreset(state.performancePreset, { applyPerformanceCounts: applyCurrentPerformanceCounts });
-});
-syncVisualModeUI();
 document.getElementById('galaxy-scale-slider').addEventListener('input', (e) => {
     state.galaxyScaleFactor = e.target.value / 100;
     document.getElementById('galaxy-scale-value').textContent = e.target.value + '%';
@@ -296,7 +268,15 @@ const performancePresetSelect = document.getElementById('performance-preset-sele
 const performancePresetValue  = document.getElementById('performance-preset-value');
 performancePresetSelect.addEventListener('change', (e) => {
     performancePresetValue.textContent = e.target.options[e.target.selectedIndex].text;
-    applyPerformancePreset(e.target.value, { applyPerformanceCounts: applyCurrentPerformanceCounts });
+    applyPerformancePreset(e.target.value, {
+        applyPerformanceCounts: () => {
+            updateGalaxyDrawRange();
+            starGeo.setDrawRange(0, state.activeStarCount);
+            scatterGeo.setDrawRange(0, state.activeScatterCount);
+            haloGeo.setDrawRange(0, state.activeHaloCount);
+            nebulaGeo.setDrawRange(0, state.activeNebulaCount);
+        }
+    });
 });
 
 const cameraPresetSelect = document.getElementById('camera-preset-select');
@@ -416,7 +396,6 @@ function gatherState() {
         muted: state.isMuted,
         reactivity: document.getElementById('reactivity-slider').value,
         galaxyStars: document.getElementById('galaxy-stars-slider').value,
-        visualMode: state.visualMode,
         autoRotate: autoRotateToggle.checked,
         autoRotateSpeed: document.getElementById('auto-rotate-speed-slider').value,
         galaxyScale: document.getElementById('galaxy-scale-slider').value,
@@ -460,10 +439,6 @@ function applyStateSnapshot(s) {
     state.isMuted = !!s.muted; syncMuteUI(); updateAudioGain();
     setSlider('reactivity-slider', s.reactivity);
     setSlider('galaxy-stars-slider', s.galaxyStars);
-    if (s.visualMode) {
-        state.visualMode = s.visualMode === '4k' ? '4k' : '1080p';
-        syncVisualModeUI();
-    }
     setSlider('auto-rotate-speed-slider', s.autoRotateSpeed);
     setSlider('galaxy-scale-slider', s.galaxyScale);
     setSlider('galaxy-core-size-slider', s.galaxyCoreSize);
@@ -637,9 +612,6 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     state.beamLengthMultiplier = 1.5;
     document.getElementById('beam-length-slider').value = 150;
     document.getElementById('beam-length-value').textContent = '150%';
-    state.visualMode = '1080p';
-    if (visualModeSelect) visualModeSelect.value = '1080p';
-    syncVisualModeUI();
     performancePresetSelect.value = 'quality';
     performancePresetSelect.dispatchEvent(new Event('change'));
     cameraPresetSelect.value = 'threeQuarter';
@@ -785,7 +757,6 @@ setupSectionToggle('keyboard-toggle-row', 'keyboard-body', 'keyboard-arrow', tru
 
 // ── Button grids for selects ──
 enhanceSelectAsButtonGrid('performance-preset-select', 'performance-preset-value');
-enhanceSelectAsButtonGrid('visual-mode-select',        'visual-mode-value');
 enhanceSelectAsButtonGrid('camera-preset-select',      'camera-preset-value');
 enhanceSelectAsButtonGrid('frame-size-select',         'frame-size-value');
 enhanceSelectAsButtonGrid('galaxy-type-select',        'galaxy-type-value');
@@ -807,5 +778,13 @@ enhanceSelectAsButtonGrid('cmap-distribution-select',  'cmap-distribution-value'
 })();
 
 // ── Initial preset applies ──
-applyPerformancePreset('quality', { applyPerformanceCounts: applyCurrentPerformanceCounts });
+applyPerformancePreset('quality', {
+    applyPerformanceCounts: () => {
+        updateGalaxyDrawRange();
+        starGeo.setDrawRange(0, state.activeStarCount);
+        scatterGeo.setDrawRange(0, state.activeScatterCount);
+        haloGeo.setDrawRange(0, state.activeHaloCount);
+        nebulaGeo.setDrawRange(0, state.activeNebulaCount);
+    }
+});
 setCameraFromPreset('threeQuarter');
