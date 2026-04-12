@@ -46,14 +46,8 @@ function animate(now = performance.now()) {
         document.getElementById('duration-time').textContent = `${dm}:${ds.toString().padStart(2,'0')}`;
     }
 
-    // Freeze when paused
-    if (state.audioLoaded && !state.isPlaying) {
-        camera.layers.set(BLOOM_LAYER);
-        bloomComposer.render();
-        camera.layers.set(0);
-        finalComposer.render();
-        return;
-    }
+    // Keep the galaxy alive when audio is loaded but paused.
+    // Audio-reactive values below already fall back to gentle idle motion when not playing.
 
     state.frameCount++;
     state.time += dt;

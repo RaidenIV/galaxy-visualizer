@@ -18,20 +18,6 @@ function lerp(a, b, t) {
     return a + (b - a) * t;
 }
 
-function buildAudioSnapshot() {
-    return {
-        frequency: audioFreqData,
-        waveform: audioTimeData,
-        low: state.currentLowFreq,
-        mid: state.currentMidFreq,
-        high: state.currentHighFreq,
-        influence: state.currentAudioInfluence,
-        peak: state.audioPeak,
-        beat: state.audioBeat,
-        energy: state.audioEnergy,
-    };
-}
-
 export function ensureAudioContext() {
     if (!state.audioContext) {
         state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -433,8 +419,22 @@ export function getWaveformData() {
     return audioTimeData;
 }
 
+
+function snapshotAudioData() {
+    return {
+        frequency: audioFreqData,
+        waveform: audioTimeData,
+        low: state.currentLowFreq,
+        mid: state.currentMidFreq,
+        high: state.currentHighFreq,
+        influence: state.currentAudioInfluence,
+    };
+}
+
 export function getAudioData() {
-    return buildAudioSnapshot();
+    ensureAudioContext();
+    ensureAnalysisBuffers();
+    return snapshotAudioData();
 }
 
 export function updateAudioAnalysis(dt = 1 / 60) {
@@ -448,7 +448,7 @@ export function updateAudioAnalysis(dt = 1 / 60) {
         state.currentAudioInfluence = lerp(state.currentAudioInfluence, 0, 0.12);
         state.lightningGlowDrive = lerp(state.lightningGlowDrive, 0, 0.08);
         state.smoothedBeamDrive = lerp(state.smoothedBeamDrive, 0, 0.08);
-        return buildAudioSnapshot();
+        return snapshotAudioData();
     }
 
     state.analyser.getByteFrequencyData(audioFreqData);
@@ -493,10 +493,10 @@ export function updateAudioAnalysis(dt = 1 / 60) {
     state.audioBeat = beat;
     state.audioEnergy = energy;
 
-    return buildAudioSnapshot();
+    return snapshotAudioData();
 }
 
-// Compatibility aliases
+// Compatibility aliases for the original main.js, whose exact imports were not uploaded.
 export const analyseAudio = updateAudioAnalysis;
 export const analyzeAudio = updateAudioAnalysis;
 export const updateAudioData = updateAudioAnalysis;
