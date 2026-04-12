@@ -69,6 +69,162 @@ let exportCancelled = false;
 export let isMP4Recording = false;
 let Mp4MuxerLib = null;
 
+let renderProgressOverlay = null;
+let renderProgressTitle = null;
+let renderProgressMeta = null;
+let renderProgressBar = null;
+let renderProgressPct = null;
+let renderProgressSub = null;
+let renderProgressCancelBtn = null;
+
+function ensureRenderProgressOverlay() {
+    if (renderProgressOverlay) return;
+
+    const style = document.createElement('style');
+    style.textContent = `
+    .render-progress-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 5000;
+    }
+    .render-progress-overlay.show { display: flex; }
+    .render-progress-card {
+        width: min(360px, calc(100vw - 32px));
+        background: rgba(0, 0, 0, 0.86);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 16px;
+        box-shadow: 0 18px 48px rgba(0,0,0,0.45);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        padding: 18px 18px 16px;
+        color: #fff;
+        pointer-events: auto;
+    }
+    .render-progress-title {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        margin-bottom: 4px;
+    }
+    .render-progress-meta, .render-progress-sub {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 13px;
+        color: rgba(255,255,255,0.72);
+        line-height: 1.4;
+    }
+    .render-progress-sub { margin-top: 8px; }
+    .render-progress-track {
+        margin-top: 14px;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.08);
+    }
+    .render-progress-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(80,130,255,0.95) 0%, rgba(130,180,255,0.98) 100%);
+        box-shadow: 0 0 18px rgba(90,150,255,0.45);
+        transition: width 0.12s linear;
+    }
+    .render-progress-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 10px;
+    }
+    .render-progress-pct {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 16px;
+        font-weight: 700;
+    }
+    .render-progress-cancel {
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.06);
+        color: #fff;
+        border-radius: 10px;
+        padding: 8px 14px;
+        cursor: pointer;
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        transition: background 0.18s ease, transform 0.18s ease;
+    }
+    .render-progress-cancel:hover { background: rgba(255,255,255,0.12); transform: translateY(-1px); }
+    .render-progress-cancel:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    `;
+    document.head.appendChild(style);
+
+    renderProgressOverlay = document.createElement('div');
+    renderProgressOverlay.className = 'render-progress-overlay';
+    renderProgressOverlay.innerHTML = `
+        <div class="render-progress-card" role="dialog" aria-modal="true" aria-live="polite">
+            <div class="render-progress-title">Rendering MP4</div>
+            <div class="render-progress-meta"></div>
+            <div class="render-progress-track"><div class="render-progress-fill"></div></div>
+            <div class="render-progress-row">
+                <div class="render-progress-pct">0%</div>
+                <button type="button" class="render-progress-cancel">Cancel</button>
+            </div>
+            <div class="render-progress-sub">Preparing export…</div>
+        </div>
+    `;
+    document.body.appendChild(renderProgressOverlay);
+
+    renderProgressTitle = renderProgressOverlay.querySelector('.render-progress-title');
+    renderProgressMeta = renderProgressOverlay.querySelector('.render-progress-meta');
+    renderProgressBar = renderProgressOverlay.querySelector('.render-progress-fill');
+    renderProgressPct = renderProgressOverlay.querySelector('.render-progress-pct');
+    renderProgressSub = renderProgressOverlay.querySelector('.render-progress-sub');
+    renderProgressCancelBtn = renderProgressOverlay.querySelector('.render-progress-cancel');
+    renderProgressCancelBtn.addEventListener('click', async () => {
+        if (!state.isRecording) return;
+        renderProgressCancelBtn.disabled = true;
+        await stopMP4Export(true);
+    });
+}
+
+function showRenderProgressOverlay(preset, range) {
+    ensureRenderProgressOverlay();
+    renderProgressTitle.textContent = 'Rendering MP4';
+    renderProgressMeta.textContent = `${preset.label} · ${mp4FrameRate} fps · ${range.loopOnly ? 'Selected Loop' : 'Full Audio'}`;
+    renderProgressCancelBtn.disabled = false;
+    updateRenderProgressOverlay(0, range.start, range.end, 'Starting export…');
+    renderProgressOverlay.classList.add('show');
+}
+
+function updateRenderProgressOverlay(progress, currentTime, endTime, subText = '') {
+    if (!renderProgressOverlay) return;
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0));
+    renderProgressBar.style.width = `${(clamped * 100).toFixed(2)}%`;
+    renderProgressPct.textContent = `${Math.round(clamped * 100)}%`;
+    if (subText) {
+        renderProgressSub.textContent = subText;
+        return;
+    }
+    renderProgressSub.textContent = `${formatClock(currentTime)} / ${formatClock(endTime)}`;
+}
+
+function hideRenderProgressOverlay() {
+    if (!renderProgressOverlay) return;
+    renderProgressOverlay.classList.remove('show');
+}
+
+function formatClock(seconds) {
+    const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+    const mins = Math.floor(safe / 60);
+    const secs = safe - mins * 60;
+    return `${mins}:${secs.toFixed(2).padStart(5, '0')}`;
+}
+
 function syncPlayButton(isPlaying) {
     if (!playBtn) return;
     playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
@@ -330,6 +486,7 @@ async function startMP4Export() {
         (await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 })).supported;
 
     buildRecordingPipeline(preset.width, preset.height);
+    showRenderProgressOverlay(preset, exportRange);
 
     mp4Muxer = new Muxer({
         target: new ArrayBufferTarget(),
@@ -370,6 +527,7 @@ async function stopMP4Export(cancelled = false) {
     state.isRecording = false;
     exportCancelled = cancelled;
     captureStatus.textContent = cancelled ? 'Cancelling export…' : 'Finalising export…';
+    updateRenderProgressOverlay(cancelled ? 0 : 1, exportRange ? exportRange.end : 0, exportRange ? exportRange.end : 0, cancelled ? 'Cancelling export…' : 'Finalising export…');
 
     try {
         stopAudioEncoding();
@@ -404,6 +562,7 @@ async function stopMP4Export(cancelled = false) {
         mp4Muxer = null;
         destroyRecordingPipeline();
         recordBtn.textContent = 'Record';
+        hideRenderProgressOverlay();
         exportRange = null;
         stopRequested = false;
     }
@@ -436,9 +595,13 @@ export function captureFrame(now) {
         }
     }
 
-    if (!stopRequested && exportRange && state.audioElement) {
-        const t = state.audioElement.currentTime;
-        if (t >= exportRange.end - (1 / Math.max(120, mp4FrameRate * 2)) || state.audioElement.ended) {
+    if (exportRange && state.audioElement) {
+        const t = Math.max(exportRange.start, Math.min(exportRange.end, state.audioElement.currentTime));
+        const total = Math.max(0.0001, exportRange.end - exportRange.start);
+        const progress = (t - exportRange.start) / total;
+        updateRenderProgressOverlay(progress, t, exportRange.end);
+
+        if (!stopRequested && (t >= exportRange.end - (1 / Math.max(120, mp4FrameRate * 2)) || state.audioElement.ended)) {
             stopRequested = true;
             queueMicrotask(() => stopMP4Export(false));
         }

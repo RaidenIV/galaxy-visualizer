@@ -222,7 +222,12 @@ function animate(now = performance.now()) {
     state.lightningGlowDrive *= 0.82;
     bloomPass.strength = state.smoothedBloom;
 
-    // ── Render ──
+    // ── Render / Capture ──
+    if (state.isRecording) {
+        captureFrame(now);
+        return;
+    }
+
     camera.layers.set(BLOOM_LAYER);
     bloomComposer.render();
     camera.layers.set(0);

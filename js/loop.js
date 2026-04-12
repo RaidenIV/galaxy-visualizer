@@ -31,6 +31,7 @@ let popupDocKeydownHandler = null;
 let cW = 0, cH = 0, mmW = 0, mmH = 0;
 // Drag state
 let dragging = null, dragX0 = 0, dragVal0 = 0, dragMoved = false;
+let dragLoopDuration = 0, dragLoopStart0 = 0;
 let mmDrag = false, mmX0 = 0, mmZS0 = 0, mmZE0 = 0;
 
 // ── Entry point ──
@@ -614,7 +615,9 @@ function updateHandles($) {
 function startHandleDrag(side, e, $) {
     dragging = side; dragMoved = false;
     dragX0 = (e.touches ? e.touches[0] : e).clientX;
-    dragVal0 = side === 'left' ? popupLoopStart : popupLoopEnd;
+    dragVal0 = popupLoopStart;
+    dragLoopStart0 = popupLoopStart;
+    dragLoopDuration = Math.max(0, popupLoopEnd - popupLoopStart);
     e.preventDefault(); e.stopPropagation();
 }
 
@@ -637,18 +640,13 @@ function onMouseMove(e, $) {
     const rect = wWrap.getBoundingClientRect();
     const dt = ((cx - dragX0) / rect.width) * (popupZoomEnd - popupZoomStart);
     const beat = popupBpm > 0 ? 60 / popupBpm : 0;
-    if (dragging === 'left') {
-        let ns = dragVal0 + dt;
-        if (beat > 0) ns = Math.round(ns / beat) * beat;
-        ns = Math.max(0, Math.min(ns, popupLoopEnd - (beat > 0 ? beat : 0.1)));
-        popupLoopStart = ns; updateLoopEnd($);
-    } else {
-        let ne = dragVal0 + dt;
-        if (beat > 0) ne = Math.round(ne / beat) * beat;
-        ne = Math.max(popupLoopStart + (beat > 0 ? beat : 0.1), Math.min(ne, popupBuffer.duration));
-        popupLoopEnd = ne;
-        if (popupBpm > 0) { const bd = (60 / popupBpm) * 4; popupLoopBars = Math.max(1, Math.round((popupLoopEnd - popupLoopStart) / bd)); document.getElementById('popup-bars-val').value = popupLoopBars; syncBarsLimit($); }
-    }
+    const loopDuration = Math.max(0, dragLoopDuration || (popupLoopEnd - popupLoopStart));
+    let ns = dragLoopStart0 + dt;
+    if (beat > 0) ns = Math.round(ns / beat) * beat;
+    const maxStart = Math.max(0, popupBuffer.duration - loopDuration);
+    ns = Math.max(0, Math.min(ns, maxStart));
+    popupLoopStart = ns;
+    popupLoopEnd = Math.min(popupBuffer.duration, popupLoopStart + loopDuration);
     updateHandles($); renderWaveform($); renderMinimap($); updateLoopInfo($);
     if (popupIsPlaying && popupSource && popupLoopOn) {
         popupSource.loopStart = popupLoopStart; popupSource.loopEnd = popupLoopEnd;
