@@ -107,8 +107,8 @@ function renderOffscreen() {
 
 // ── Dimensions ──
 function getRecordingDimensions() {
-    const mode = state.visualMode === '4k' ? '4k' : '1080p';
-    return mode === '4k'
+    const selected = resSelect ? resSelect.value : '4k';
+    return selected === '4k'
         ? { w: 3840, h: 2160 }
         : { w: 1920, h: 1080 };
 }
@@ -340,43 +340,37 @@ recordBtn.addEventListener('click', async () => {
 });
 
 frameBtn.addEventListener('click', async () => {
-    const preset = frameSizeSelect ? frameSizeSelect.value : 'current';
-    let w = Math.floor(window.innerWidth), h = Math.floor(window.innerHeight);
-    if (preset === '1080p') { w = 1920; h = 1080; }
-    else if (preset === '4k') { w = 3840; h = 2160; }
+    const preset = frameSizeSelect ? frameSizeSelect.value : '4k';
+    let w = 1920, h = 1080;
+    if (preset === '4k') { w = 3840; h = 2160; }
     captureStatus.textContent = `Saving frame (${w}×${h})…`;
     try { await exportFrameAtSize(w, h); captureStatus.textContent = 'Frame saved.'; }
     catch (e) { captureStatus.textContent = 'Frame capture failed.'; }
 });
 
 // ── UI sync ──
-function syncCaptureModeUI() {
-    const label = state.visualMode === '4k' ? '4K' : '1080p';
-    if (resSelect) {
-        resSelect.disabled = true;
-        resSelect.value = state.visualMode === '4k' ? '4k' : '1080p';
-    }
+function syncResolutionUI() {
     const valueEl = document.getElementById('record-resolution-value');
-    if (valueEl) valueEl.textContent = label;
+    if (valueEl && resSelect) valueEl.textContent = resSelect.options[resSelect.selectedIndex].text;
 }
-window.addEventListener('galaxy-visual-mode-change', syncCaptureModeUI);
-syncCaptureModeUI();
+function syncFrameSizeUI() {
+    const el = document.getElementById('frame-size-value');
+    if (el && frameSizeSelect) el.textContent = frameSizeSelect.options[frameSizeSelect.selectedIndex].text;
+}
+syncResolutionUI();
+syncFrameSizeUI();
 
 function syncFormatUI() {
     const isMp4 = !formatSelect || formatSelect.value === 'mp4';
     if (bitrateRow) bitrateRow.style.display = isMp4 ? '' : 'none';
     const noteEl = document.getElementById('capture-note');
     if (noteEl) noteEl.textContent = isMp4
-        ? 'MP4: Chrome/Edge · H.264 · exports at the current visual mode'
-        : 'WebM: all browsers · VP9 · exports at the current visual mode';
-    syncCaptureModeUI();
+        ? 'MP4: Chrome/Edge · H.264 · export resolution set above'
+        : 'WebM: all browsers · VP9 · export resolution set above';
 }
 if (formatSelect) { formatSelect.addEventListener('change', syncFormatUI); syncFormatUI(); }
-
-if (frameSizeSelect) frameSizeSelect.addEventListener('change', (e) => {
-    const el = document.getElementById('frame-size-value');
-    if (el) el.textContent = e.target.options[e.target.selectedIndex].text;
-});
+if (resSelect) resSelect.addEventListener('change', syncResolutionUI);
+if (frameSizeSelect) frameSizeSelect.addEventListener('change', syncFrameSizeUI);
 
 // ── Collapsible toggle ──
 (function () {

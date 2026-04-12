@@ -25,7 +25,10 @@
         </div>
         <div class="controls-content">
             <button id="load-btn" class="primary">Load Audio File</button>
-            <button id="play-btn" class="play" disabled>▶ Play</button>
+            <div class="button-row transport-row-split">
+                <button id="play-btn" class="play" disabled>▶ Play</button>
+                <button id="loop-btn" class="secondary-btn loop-open-btn" disabled>Loop</button>
+            </div>
             <div class="progress-container" id="progress-container" style="display:none;">
                 <div class="progress-label">
                     <span class="time-display" id="current-time">0:00</span>
@@ -64,14 +67,6 @@
                     <span class="section-arrow" id="galaxy-arrow">▸</span>
                 </div>
                 <div class="section-body collapsed" id="galaxy-body">
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Visual Mode</span><span class="slider-value" id="visual-mode-value">1080p</span></div>
-                        <select id="visual-mode-select">
-                            <option value="1080p" selected>1080p</option>
-                            <option value="4k">4K</option>
-                        </select>
-                    </div>
-                    <div class="mini-note" style="margin-top:2px;margin-bottom:10px;">4K mode raises the live render resolution and particle counts so 4K exports match the real-time view more closely.</div>
                     <div class="slider-container" style="margin-top:8px;">
                         <div class="slider-label"><span>Reactivity</span><span class="slider-value" id="reactivity-value">100%</span></div>
                         <input type="range" id="reactivity-slider" min="10" max="300" value="100">
@@ -124,10 +119,6 @@
                         <input type="range" id="beam-threshold-slider" min="0" max="100" value="80">
                     </div>
                     <div class="slider-container">
-                        <div class="slider-label"><span>Lightning Frequency</span><span class="slider-value" id="lightning-frequency-value">100%</span></div>
-                        <input type="range" id="lightning-frequency-slider" min="0" max="300" value="100">
-                    </div>
-                    <div class="slider-container">
                         <div class="slider-label"><span>Core Glow Intensity</span><span class="slider-value" id="core-glow-intensity-value">100%</span></div>
                         <input type="range" id="core-glow-intensity-slider" min="0" max="250" value="100">
                     </div>
@@ -169,6 +160,7 @@
                                 <option value="grand">Grand Design Spiral</option>
                                 <option value="flocculent">Flocculent Spiral</option>
                                 <option value="multiarm">Multi-Arm Spiral</option>
+                                <option value="tidal">Tidal Spiral</option>
                                 <option value="ring">Ring Galaxy</option>
                                 <option value="lenticular">Lenticular (S0)</option>
                                 <option value="elliptical">Elliptical</option>
@@ -258,6 +250,10 @@
                         </label>
                     </div>
                     <div class="slider-container">
+                        <div class="slider-label"><span>Lightning Frequency</span><span class="slider-value" id="lightning-frequency-value">100%</span></div>
+                        <input type="range" id="lightning-frequency-slider" min="0" max="300" value="100">
+                    </div>
+                    <div class="slider-container">
                         <div class="slider-label"><span>Recursion Depth</span><span class="slider-value" id="depth-value">6</span></div>
                         <input type="range" id="depth-slider" min="1" max="8" value="6" step="1">
                     </div>
@@ -334,7 +330,7 @@
             <!-- Capture -->
             <div class="cmap-section">
                 <div class="section-toggle-row" id="capture-toggle-row">
-                    <div class="section-title" style="margin:0;">Capture</div>
+                    <div class="section-title" style="margin:0;">EXPORT</div>
                     <span class="section-arrow" id="capture-arrow">▸</span>
                 </div>
                 <div class="section-body collapsed" id="capture-body">
@@ -346,10 +342,9 @@
                         </select>
                     </div>
                     <div class="slider-container">
-                        <div class="slider-label"><span>Visual Mode</span><span class="slider-value" id="record-resolution-value">1080p</span></div>
-                        <select id="record-resolution-select" class="capture-select" disabled>
-                            <option value="1080p" selected>1080p</option>
-                            <option value="4k">4K</option>
+                        <div class="slider-label"><span>Export Resolution</span><span class="slider-value" id="record-resolution-value">4K</span></div>
+                        <select id="record-resolution-select" class="capture-select">
+                            <option value="4k" selected>4K</option>
                         </select>
                     </div>
                     <div class="slider-container" id="record-bitrate-row">
@@ -361,11 +356,9 @@
                         </select>
                     </div>
                     <div class="slider-container">
-                        <div class="slider-label"><span>Frame Export Size</span><span class="slider-value" id="frame-size-value">Current</span></div>
+                        <div class="slider-label"><span>Frame Export Size</span><span class="slider-value" id="frame-size-value">4K</span></div>
                         <select id="frame-size-select" class="capture-select">
-                            <option value="current" selected>Current</option>
-                            <option value="1080p">1080p</option>
-                            <option value="4k">4K</option>
+                            <option value="4k" selected>4K</option>
                         </select>
                     </div>
                     <div class="button-row">
