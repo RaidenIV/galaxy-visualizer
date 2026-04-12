@@ -497,15 +497,17 @@ export function rotateGalaxyParticles(rotSpeed) {
     galaxyGeo.setDrawRange(0, state.activeGalaxyCount);
 
     // Central sphere
+    if (centralSphere) {
+        scene.remove(centralSphere);
+        if (centralSphere.geometry) centralSphere.geometry.dispose();
+        if (sphereMat) sphereMat.dispose();
+    }
     const sphereGeo = new THREE.SphereGeometry(0.09, 24, 24);
-    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
-    const centralSphere = new THREE.Mesh(sphereGeo, sphereMat);
+    sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+    centralSphere = new THREE.Mesh(sphereGeo, sphereMat);
     scene.add(centralSphere);
     centralSphere.layers.enable(BLOOM_LAYER);
-    // Export for animate loop
-    galaxyGroup._sphereMat = sphereMat;
-    galaxyGroup._sphere    = centralSphere;
 }
 
-export const centralSphere = galaxyGroup._sphere;
-export const sphereMat     = galaxyGroup._sphereMat;
+export let centralSphere = null;
+export let sphereMat = null;
