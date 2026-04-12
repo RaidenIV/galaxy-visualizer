@@ -166,7 +166,7 @@ function ensureRenderProgressOverlay() {
     .render-progress-row {
         display: flex;
         align-items: center;
-        justify-content: flex-end;
+        justify-content: center;
         margin-top: 10px;
     }
     .render-progress-cancel {
