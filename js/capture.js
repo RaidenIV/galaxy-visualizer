@@ -107,7 +107,7 @@ function renderOffscreen() {
 
 // ── Dimensions ──
 function getRecordingDimensions() {
-    const selected = resSelect ? resSelect.value : '1080p';
+    const selected = resSelect ? resSelect.value : '4k';
     return selected === '4k'
         ? { w: 3840, h: 2160 }
         : { w: 1920, h: 1080 };
@@ -340,7 +340,7 @@ recordBtn.addEventListener('click', async () => {
 });
 
 frameBtn.addEventListener('click', async () => {
-    const preset = frameSizeSelect ? frameSizeSelect.value : '1080p';
+    const preset = frameSizeSelect ? frameSizeSelect.value : '4k';
     let w = 1920, h = 1080;
     if (preset === '4k') { w = 3840; h = 2160; }
     captureStatus.textContent = `Saving frame (${w}×${h})…`;
