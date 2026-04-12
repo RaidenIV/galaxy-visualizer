@@ -88,6 +88,8 @@ export const galaxyGroup = new THREE.Group();
 galaxyGroup.rotateOnAxis(BEAM_TILT_AXIS, -40 * Math.PI / 180);
 scene.add(galaxyGroup);
 export let galaxyBaseQuaternion = galaxyGroup.quaternion.clone();
+export let centralSphere = null;
+export let sphereMat = null;
 
 const galaxyMesh = new THREE.Points(galaxyGeo, galaxyMat);
 galaxyGroup.add(galaxyMesh);
@@ -498,7 +500,7 @@ export function rotateGalaxyParticles(rotSpeed) {
 
     // Central sphere
     if (centralSphere) {
-        galaxyGroup.remove(centralSphere);
+        scene.remove(centralSphere);
         if (centralSphere.geometry) centralSphere.geometry.dispose();
     }
     if (sphereMat) sphereMat.dispose();
@@ -506,9 +508,6 @@ export function rotateGalaxyParticles(rotSpeed) {
     const sphereGeo = new THREE.SphereGeometry(0.09, 24, 24);
     sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
     centralSphere = new THREE.Mesh(sphereGeo, sphereMat);
-    galaxyGroup.add(centralSphere);
+    scene.add(centralSphere);
     centralSphere.layers.enable(BLOOM_LAYER);
 }
-
-export let centralSphere = null;
-export let sphereMat = null;
