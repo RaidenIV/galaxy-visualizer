@@ -13,13 +13,13 @@ body { font-family: 'Rajdhani', sans-serif; background: #000; }
 /* ── Main control panel — glassmorphism ── */
 #controls {
     position: fixed; top: 20px; left: 20px;
-    background: rgba(4, 5, 20, 0.68);
-    backdrop-filter: blur(32px) saturate(1.6);
-    -webkit-backdrop-filter: blur(32px) saturate(1.6);
-    border: 1px solid rgba(255,255,255,0.10);
+    background: linear-gradient(180deg, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.58) 100%);
+    backdrop-filter: blur(26px) saturate(1.25);
+    -webkit-backdrop-filter: blur(26px) saturate(1.25);
+    border: 1px solid rgba(255,255,255,0.11);
     border-radius: 18px;
     padding: 22px; color: #fff; min-width: 320px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+    box-shadow: 0 18px 60px rgba(0,0,0,0.52), inset 0 1px 0 rgba(255,255,255,0.08);
     z-index: 1000;
     height: calc(100vh - 40px); max-height: calc(100vh - 40px);
     overflow: hidden; display: flex; flex-direction: column;
@@ -37,8 +37,8 @@ body { font-family: 'Rajdhani', sans-serif; background: #000; }
     font-family: 'Rajdhani', sans-serif !important;
     font-size: 22px !important; font-weight: 700 !important;
     letter-spacing: 0.5px !important; line-height: 1.1 !important; margin: 0 !important;
-    background: linear-gradient(135deg, #fff 0%, #c8d8ff 100%);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    color: rgba(255,255,255,0.96);
+    text-shadow: 0 1px 18px rgba(255,255,255,0.08);
 }
 
 /* ── Buttons ── */
@@ -49,10 +49,10 @@ button {
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 button.primary {
-    background: rgba(255,255,255,0.08);
+    background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.05) 100%);
     color: #fff;
     border: 1px solid rgba(255,255,255,0.14);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
 }
 button.primary:hover:not(:disabled) {
     transform: translateY(-2px);
@@ -151,10 +151,10 @@ select option { background: #0a0c1a; color: #fff; }
 .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
 .button-row.single { grid-template-columns: 1fr; }
 button.secondary-btn {
-    background: rgba(255,255,255,0.06);
+    background: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.035) 100%);
     border: 1px solid rgba(255,255,255,0.12);
-    color: rgba(255,255,255,0.85);
-    backdrop-filter: blur(8px);
+    color: rgba(255,255,255,0.88);
+    backdrop-filter: blur(12px);
 }
 button.secondary-btn:hover:not(:disabled) {
     background: rgba(255,255,255,0.12);
@@ -164,7 +164,7 @@ button.secondary-btn:hover:not(:disabled) {
 }
 
 /* ── Info / status ── */
-.status-line { margin-top: 6px; font-size: 11px; color: #6a90c8; min-height: 14px; }
+.status-line { margin-top: 6px; font-size: 11px; color: rgba(120,180,255,0.95); min-height: 14px; }
 .mini-note   { margin-top: 5px; font-size: 10px; color: rgba(255,255,255,0.35); line-height: 1.4; }
 .info { margin: 10px 0; font-size: 12px; color: rgba(255,255,255,0.5); }
 .info-value { color: rgba(255,255,255,0.9); font-weight: 600; margin-top: 3px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -173,7 +173,7 @@ button.secondary-btn:hover:not(:disabled) {
 .progress-container { margin: 10px 0; }
 .progress-label { font-size: 10px; color: rgba(255,255,255,0.4); margin-bottom: 5px; display: flex; justify-content: space-between; }
 .progress-bar { width: 100%; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; cursor: pointer; position: relative; overflow: visible; }
-.progress-fill { height: 100%; background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%); border-radius: 3px; width: 0%; transition: width 0.1s linear; position: relative; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, rgba(80,150,255,0.95) 0%, rgba(43,108,255,0.95) 100%); border-radius: 3px; width: 0%; transition: width 0.1s linear; position: relative; box-shadow: 0 0 16px rgba(80,150,255,0.35); }
 .progress-fill::after { content:''; position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; background: #fff; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.2s; }
 .progress-bar:hover .progress-fill::after { opacity: 1; }
 .time-display { font-size: 10px; color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; }
@@ -277,30 +277,36 @@ button.secondary-btn:hover:not(:disabled) {
 
 #loop-modal-overlay {
     position: fixed; inset: 0; z-index: 9000;
-    background: rgba(0,0,0,0.65);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: rgba(0,0,0,0.76);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     display: flex; align-items: center; justify-content: center;
     padding: 20px;
+    overflow: hidden;
 }
 
 .loop-modal-panel {
-    background: rgba(5, 7, 22, 0.88);
-    backdrop-filter: blur(40px) saturate(1.8);
-    -webkit-backdrop-filter: blur(40px) saturate(1.8);
+    background: linear-gradient(180deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.64) 100%);
+    backdrop-filter: blur(28px) saturate(1.2);
+    -webkit-backdrop-filter: blur(28px) saturate(1.2);
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 20px;
     padding: 24px;
     width: min(980px, 95vw);
-    max-height: 90vh;
+    height: min(760px, 90vh);
+    max-height: min(760px, 90vh);
     overflow-y: auto;
-    box-shadow: 0 24px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.09);
+    overflow-x: hidden;
+    box-shadow: 0 28px 84px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.08);
     font-family: 'Rajdhani', sans-serif;
     color: #fff;
+    box-sizing: border-box;
 }
 
 .loop-header {
     display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
     margin-bottom: 18px; padding-bottom: 14px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
 }
@@ -317,7 +323,7 @@ button.secondary-btn:hover:not(:disabled) {
 
 /* Waveform section */
 .loop-wave-section { margin-bottom: 16px; }
-.loop-wave-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.loop-wave-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; min-width: 0; }
 .loop-section-label { font-family: 'Rajdhani', sans-serif; font-size: 10px; letter-spacing: 0.2em; color: rgba(255,255,255,0.35); text-transform: uppercase; }
 .loop-zoom-controls { display: flex; align-items: center; gap: 4px; }
 .loop-zoom-btn {
@@ -333,7 +339,7 @@ button.secondary-btn:hover:not(:disabled) {
 
 .loop-waveform-wrap {
     position: relative; height: 130px; cursor: crosshair;
-    user-select: none; border-radius: 8px 8px 0 0; overflow: visible;
+    user-select: none; border-radius: 8px 8px 0 0; overflow: hidden;
     background: rgba(0,4,18,0.6); border: 1px solid rgba(255,255,255,0.07);
 }
 .loop-wave-clip { position: absolute; inset: 0; overflow: hidden; border-radius: 8px 8px 0 0; pointer-events: none; }
@@ -396,17 +402,17 @@ button.secondary-btn:hover:not(:disabled) {
 
 /* Controls section */
 .loop-controls-section {
-    display: grid; grid-template-columns: auto 1fr auto;
+    display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,0.9fr) minmax(0,1fr);
     border-top: 1px solid rgba(255,255,255,0.08);
     border-radius: 10px;
     overflow: hidden;
     background: rgba(255,255,255,0.02);
     margin-bottom: 12px;
 }
-.loop-ctrl-block { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+.loop-ctrl-block { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; justify-content: center; min-width: 0; }
 .loop-ctrl-block + .loop-ctrl-block { border-left: 1px solid rgba(255,255,255,0.06); }
 
-.loop-transport-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.loop-transport-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .loop-tbtn {
     background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12) !important;
     color: rgba(255,255,255,0.85); font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700;
@@ -483,7 +489,7 @@ button.secondary-btn:hover:not(:disabled) {
 .loop-stat b { color: rgba(255,255,255,0.6); font-weight: 400; }
 
 /* Action buttons */
-.loop-action-row { display: flex; gap: 8px; justify-content: flex-end; }
+.loop-action-row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
 .loop-action-btn {
     padding: 10px 20px !important; border-radius: 10px; font-size: 13px; font-weight: 700;
     cursor: pointer; transition: all 0.2s; width: auto !important; margin: 0 !important;
@@ -496,6 +502,14 @@ button.secondary-btn:hover:not(:disabled) {
 .loop-apply-btn { background: linear-gradient(135deg, rgba(59,130,246,0.85), rgba(37,99,235,0.85)) !important; border: 1px solid rgba(96,165,250,0.35) !important; color: #fff !important; }
 .loop-apply-btn:hover:not(:disabled) { background: linear-gradient(135deg, rgba(79,150,255,0.9), rgba(59,119,255,0.9)) !important; transform: translateY(-1px) !important; box-shadow: 0 6px 20px rgba(59,130,246,0.35) !important; }
 .loop-apply-btn:disabled { opacity: 0.35 !important; cursor: not-allowed; }
+
+.loop-option-row { padding-top: 2px; }
+.loop-check-label { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.loop-check-input { position: absolute; opacity: 0; pointer-events: none; }
+.loop-check-box { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.20); background: rgba(255,255,255,0.05); display: inline-flex; align-items: center; justify-content: center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); }
+.loop-check-box::after { content: ''; width: 8px; height: 8px; border-radius: 2px; background: rgba(80,150,255,0.95); transform: scale(0); transition: transform 0.15s ease; box-shadow: 0 0 10px rgba(80,150,255,0.35); }
+.loop-check-input:checked + .loop-check-box::after { transform: scale(1); }
+.loop-check-text { font-size: 11px; color: rgba(255,255,255,0.60); letter-spacing: 0.02em; }
 
 @media (max-width: 640px) {
     .loop-controls-section { grid-template-columns: 1fr; }

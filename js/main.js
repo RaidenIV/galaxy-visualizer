@@ -36,12 +36,21 @@ function animate(now = performance.now()) {
 
     // Progress bar
     if (state.audioLoaded && state.audioElement && state.audioElement.duration) {
-        const pct = (state.audioElement.currentTime / state.audioElement.duration) * 100;
+        let displayCurrent = state.audioElement.currentTime;
+        let displayDuration = state.audioElement.duration;
+        let pct = (displayCurrent / displayDuration) * 100;
+
+        if (state.loopEnabled && state.loopEnd > state.loopStart) {
+            displayDuration = state.loopEnd - state.loopStart;
+            displayCurrent = Math.max(0, Math.min(displayDuration, state.audioElement.currentTime - state.loopStart));
+            pct = displayDuration > 0 ? (displayCurrent / displayDuration) * 100 : 0;
+        }
+
         document.getElementById('progress-fill').style.width = pct + '%';
-        const cm = Math.floor(state.audioElement.currentTime / 60);
-        const cs = Math.floor(state.audioElement.currentTime % 60);
-        const dm = Math.floor(state.audioElement.duration / 60);
-        const ds = Math.floor(state.audioElement.duration % 60);
+        const cm = Math.floor(displayCurrent / 60);
+        const cs = Math.floor(displayCurrent % 60);
+        const dm = Math.floor(displayDuration / 60);
+        const ds = Math.floor(displayDuration % 60);
         document.getElementById('current-time').textContent  = `${cm}:${cs.toString().padStart(2,'0')}`;
         document.getElementById('duration-time').textContent = `${dm}:${ds.toString().padStart(2,'0')}`;
     }

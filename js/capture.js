@@ -327,8 +327,8 @@ function syncFormatUI() {
     if (bitrateRow) bitrateRow.style.display = isMp4 ? '' : 'none';
     const noteEl = document.getElementById('capture-note');
     if (noteEl) noteEl.textContent = isMp4
-        ? 'MP4: Chrome/Edge · H.264 · 4K'
-        : 'WebM: all browsers · VP9 · 4K';
+        ? '4K MP4: Chrome/Edge · H.264'
+        : '4K WebM: all browsers · VP9';
 }
 if (formatSelect) { formatSelect.addEventListener('change', syncFormatUI); syncFormatUI(); }
 

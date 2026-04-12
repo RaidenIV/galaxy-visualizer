@@ -145,7 +145,12 @@ function scrubTo(clientX) {
     if (!state.audioLoaded || !state.audioElement) return;
     const rect = progressBar.getBoundingClientRect();
     const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    state.audioElement.currentTime = pct * state.audioElement.duration;
+    if (state.loopEnabled && state.loopEnd > state.loopStart) {
+        const loopDur = state.loopEnd - state.loopStart;
+        state.audioElement.currentTime = state.loopStart + pct * loopDur;
+    } else {
+        state.audioElement.currentTime = pct * state.audioElement.duration;
+    }
 }
 progressBar.addEventListener('mousedown', (e) => { isScrubbing = true; scrubTo(e.clientX); e.preventDefault(); });
 progressBar.addEventListener('touchstart', (e) => { isScrubbing = true; scrubTo(e.touches[0].clientX); }, { passive: true });
@@ -629,7 +634,7 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     document.getElementById('beam-length-value').textContent = '150%';
 
     clearAudioLoop();
-    if (loopBtn) { loopBtn.textContent = '⌁ Loop'; loopBtn.classList.remove('loop-active'); }
+    if (loopBtn) { loopBtn.textContent = 'Loop'; loopBtn.classList.remove('loop-active'); }
 
     performancePresetSelect.value = 'quality';
     performancePresetSelect.dispatchEvent(new Event('change'));
@@ -748,6 +753,12 @@ document.addEventListener('drop', async (e) => {
 
 // ── Keyboard shortcuts ──
 document.addEventListener('keydown', (e) => {
+    if (document.getElementById('loop-modal-overlay')) {
+        if (e.key === ' ' || e.code === 'Space' || e.key === '+' || e.key === '=' || e.key === '-' || e.key === '0') {
+            e.preventDefault();
+            return;
+        }
+    }
     if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         if (!document.fullscreenElement) {

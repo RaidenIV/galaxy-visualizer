@@ -23,6 +23,10 @@ let popupZoomEnd   = 1;
 let popupPeaks     = null;
 let popupAnimRaf   = null;
 let popupResizeObs = null;
+let popupForceRestartFromLoopStart = false;
+let popupDocMouseMoveHandler = null;
+let popupDocMouseUpHandler = null;
+let popupDocKeydownHandler = null;
 // Canvas dims
 let cW = 0, cH = 0, mmW = 0, mmH = 0;
 // Drag state
@@ -36,8 +40,10 @@ export function openLoopPopup() {
 
     const overlay = document.createElement('div');
     overlay.id = 'loop-modal-overlay';
+    overlay.tabIndex = -1;
     overlay.innerHTML = buildPopupHTML();
     document.body.appendChild(overlay);
+    overlay.focus();
 
     // Wire up all popup events
     wirePopupEvents(overlay);
@@ -51,7 +57,7 @@ function buildPopupHTML() {
     return `
 <div class="loop-modal-panel" id="loop-panel">
   <div class="loop-header">
-    <div class="loop-title">⌁ BPM Detective <span class="loop-title-sub">— Loop Region</span></div>
+    <div class="loop-title">BPM Detective <span class="loop-title-sub">— Loop Region</span></div>
     <button class="loop-close-btn" id="popup-close-btn" title="Close">✕</button>
   </div>
 
@@ -108,6 +114,13 @@ function buildPopupHTML() {
           <span class="loop-pill-label">Loop</span>
         </div>
       </div>
+      <div class="loop-option-row">
+        <label class="loop-check-label">
+          <input type="checkbox" id="popup-force-start-toggle" class="loop-check-input">
+          <span class="loop-check-box"></span>
+          <span class="loop-check-text">Always start preview from loop start</span>
+        </label>
+      </div>
       <div class="loop-volume-row">
         <button class="loop-vol-btn" id="popup-mute-btn">🔊</button>
         <input class="loop-vol-slider" id="popup-vol-slider" type="range" min="0" max="100" value="80">
@@ -146,7 +159,7 @@ function buildPopupHTML() {
   <div class="loop-action-row">
     <button class="loop-action-btn loop-cancel-btn" id="popup-cancel-btn">Cancel</button>
     <button class="loop-action-btn loop-clear-btn" id="popup-clear-btn">Clear Loop</button>
-    <button class="loop-action-btn loop-apply-btn" id="popup-apply-btn" disabled>Apply Loop ✓</button>
+    <button class="loop-action-btn loop-apply-btn" id="popup-apply-btn" disabled>Apply Loop</button>
   </div>
 </div>`;
 }
@@ -172,7 +185,7 @@ function wirePopupEvents(overlay) {
         state.detectedBpm = popupBpm;
         const btn = document.getElementById('loop-btn');
         if (btn) {
-            btn.textContent = '⌁ Loop ✓';
+            btn.textContent = 'Loop ✓';
             btn.classList.add('loop-active');
         }
         closePopup();
@@ -185,6 +198,9 @@ function wirePopupEvents(overlay) {
         popupLoopOn = !popupLoopOn;
         $('popup-loop-switch').classList.toggle('on', popupLoopOn);
         if (popupSource && popupIsPlaying) { popupSource.loop = popupLoopOn; if (popupLoopOn) { popupSource.loopStart = popupLoopStart; popupSource.loopEnd = popupLoopEnd; } }
+    });
+    $('popup-force-start-toggle').addEventListener('change', () => {
+        popupForceRestartFromLoopStart = $('popup-force-start-toggle').checked;
     });
 
     // Volume
@@ -213,7 +229,8 @@ function wirePopupEvents(overlay) {
         applyLoopChange($);
     });
     $('popup-bars-incr').addEventListener('click', () => {
-        popupLoopBars = popupLoopBars + 1;
+        const maxBars = getMaxLoopBars();
+        popupLoopBars = Math.min(maxBars, popupLoopBars + 1);
         $('popup-bars-val').value = popupLoopBars;
         applyLoopChange($);
     });
@@ -267,19 +284,54 @@ function wirePopupEvents(overlay) {
         e.preventDefault();
     });
 
-    // Global mouse events (captured on overlay to avoid body leaks)
-    document.addEventListener('mousemove', e => onMouseMove(e, $));
-    document.addEventListener('mouseup',   () => onMouseUp($));
+    // Global handlers while popup is open
+    popupDocMouseMoveHandler = e => onMouseMove(e, $);
+    popupDocMouseUpHandler = () => onMouseUp($);
+    document.addEventListener('mousemove', popupDocMouseMoveHandler);
+    document.addEventListener('mouseup', popupDocMouseUpHandler);
 
-    // Keyboard within popup
-    overlay.addEventListener('keydown', e => {
+    popupDocKeydownHandler = e => {
+        if (!popupOpen) return;
         const active = document.activeElement;
-        if (active && (active.id === 'popup-bpm-input' || active.id === 'popup-bars-val')) return;
-        if (e.key === ' ') { e.preventDefault(); e.stopPropagation(); popupIsPlaying ? popupPause() : popupPlay($); }
-        if (e.key === '+' || e.key === '=') zoomAtX(cW / 2, 2, $);
-        if (e.key === '-') zoomAtX(cW / 2, 0.5, $);
-        if (e.key === '0' && popupBuffer) setZoomWindow(0, popupBuffer.duration, $);
-    });
+        const editingInput = active && (active.id === 'popup-bpm-input' || active.id === 'popup-bars-val');
+        if (editingInput && e.key !== 'Escape') return;
+
+        if (e.key === ' ' || e.code === 'Space') {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            popupIsPlaying ? popupPause() : popupPlay($);
+            return;
+        }
+        if (e.key === '+' || e.key === '=') {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            zoomAtX(cW / 2, 2, $);
+            return;
+        }
+        if (e.key === '-') {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            zoomAtX(cW / 2, 0.5, $);
+            return;
+        }
+        if (e.key === '0' && popupBuffer) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            setZoomWindow(0, popupBuffer.duration, $);
+            return;
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            closePopup();
+        }
+    };
+    document.addEventListener('keydown', popupDocKeydownHandler, true);
 
     // Canvas resize observer
     popupResizeObs = new ResizeObserver(() => resizeCanvases($));
@@ -348,7 +400,7 @@ async function initPopupAudio(file) {
             }
         } else {
             popupLoopStart = 0;
-            updateLoopEnd();
+            updateLoopEnd($);
         }
 
         popupZoomStart = 0;
@@ -357,6 +409,7 @@ async function initPopupAudio(file) {
 
         buildPeaks();
         renderWaveform($); renderMinimap($);
+        syncBarsLimit($);
         updateHandles($); updateLoopInfo($);
 
         $('popup-play-btn').disabled = false;
@@ -579,13 +632,13 @@ function onMouseMove(e, $) {
         let ns = dragVal0 + dt;
         if (beat > 0) ns = Math.round(ns / beat) * beat;
         ns = Math.max(0, Math.min(ns, popupLoopEnd - (beat > 0 ? beat : 0.1)));
-        popupLoopStart = ns; updateLoopEnd();
+        popupLoopStart = ns; updateLoopEnd($);
     } else {
         let ne = dragVal0 + dt;
         if (beat > 0) ne = Math.round(ne / beat) * beat;
         ne = Math.max(popupLoopStart + (beat > 0 ? beat : 0.1), Math.min(ne, popupBuffer.duration));
         popupLoopEnd = ne;
-        if (popupBpm > 0) { const bd = (60 / popupBpm) * 4; popupLoopBars = Math.max(1, Math.round((popupLoopEnd - popupLoopStart) / bd)); document.getElementById('popup-bars-val').value = popupLoopBars; }
+        if (popupBpm > 0) { const bd = (60 / popupBpm) * 4; popupLoopBars = Math.max(1, Math.round((popupLoopEnd - popupLoopStart) / bd)); document.getElementById('popup-bars-val').value = popupLoopBars; syncBarsLimit($); }
     }
     updateHandles($); renderWaveform($); renderMinimap($); updateLoopInfo($);
     if (popupIsPlaying && popupSource && popupLoopOn) {
@@ -608,13 +661,42 @@ function updateLoopInfo($) {
     $('popup-stat-loop').textContent = `${popupLoopStart.toFixed(2)}s – ${popupLoopEnd.toFixed(2)}s`;
 }
 
-function updateLoopEnd() {
+function getLoopBarDuration() {
+    return popupBpm > 0 ? (60 / popupBpm) * 4 : 0;
+}
+
+function getMaxLoopBars() {
+    if (!popupBuffer) return 999;
+    const barDur = getLoopBarDuration();
+    if (barDur <= 0) return 999;
+    return Math.max(1, Math.floor(((popupBuffer.duration - popupLoopStart) / barDur) + 1e-6));
+}
+
+function syncBarsLimit($) {
+    const maxBars = getMaxLoopBars();
+    const barsInput = $('popup-bars-val');
+    popupLoopBars = Math.max(1, Math.min(popupLoopBars, maxBars));
+    if (barsInput) {
+        barsInput.max = String(maxBars);
+        barsInput.value = popupLoopBars;
+    }
+    const decrBtn = $('popup-bars-decr');
+    const incrBtn = $('popup-bars-incr');
+    if (decrBtn) decrBtn.disabled = popupLoopBars <= 1;
+    if (incrBtn) incrBtn.disabled = popupLoopBars >= maxBars;
+    return maxBars;
+}
+
+function updateLoopEnd($) {
     if (!popupBuffer || popupBpm <= 0) return;
-    popupLoopEnd = Math.min(popupLoopStart + (60 / popupBpm) * 4 * popupLoopBars, popupBuffer.duration);
+    syncBarsLimit($);
+    popupLoopEnd = Math.min(popupLoopStart + getLoopBarDuration() * popupLoopBars, popupBuffer.duration);
 }
 
 function applyLoopChange($) {
-    updateLoopEnd(); updateHandles($); renderWaveform($); renderMinimap($); updateLoopInfo($);
+    updateLoopEnd($);
+    syncBarsLimit($);
+    updateHandles($); renderWaveform($); renderMinimap($); updateLoopInfo($);
     if (popupIsPlaying) { popupPause(); popupPlay($); }
 }
 
@@ -628,15 +710,21 @@ function commitBPM($) {
 }
 
 function commitBars($) {
+    const maxBars = getMaxLoopBars();
     const v = parseInt($('popup-bars-val').value);
-    if (v >= 1 && v <= 999) { popupLoopBars = v; applyLoopChange($); }
-    else { $('popup-bars-val').value = popupLoopBars; }
+    if (!Number.isNaN(v) && v >= 1) {
+        popupLoopBars = Math.min(maxBars, v);
+        applyLoopChange($);
+    } else {
+        $('popup-bars-val').value = popupLoopBars;
+    }
 }
 
 // ── Playback ──
 function popupPlay($) {
     if (!popupBuffer || !popupCtx) return;
     if (popupCtx.state === 'suspended') popupCtx.resume();
+    if (popupForceRestartFromLoopStart) popupOffset = popupLoopStart;
     if (popupLoopOn && (popupOffset < popupLoopStart || popupOffset >= popupLoopEnd)) popupOffset = popupLoopStart;
     popupSource = popupCtx.createBufferSource();
     popupSource.buffer = popupBuffer;
@@ -726,8 +814,9 @@ function closePopup() {
     if (popupSource)  { try { popupSource.stop(); } catch (_) {} popupSource = null; }
     if (popupCtx)     { try { popupCtx.close(); }  catch (_) {} popupCtx = null; }
     if (popupResizeObs) { popupResizeObs.disconnect(); popupResizeObs = null; }
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup',   onMouseUp);
+    if (popupDocMouseMoveHandler) { document.removeEventListener('mousemove', popupDocMouseMoveHandler); popupDocMouseMoveHandler = null; }
+    if (popupDocMouseUpHandler) { document.removeEventListener('mouseup', popupDocMouseUpHandler); popupDocMouseUpHandler = null; }
+    if (popupDocKeydownHandler) { document.removeEventListener('keydown', popupDocKeydownHandler, true); popupDocKeydownHandler = null; }
     const overlay = document.getElementById('loop-modal-overlay');
     if (overlay) overlay.remove();
     popupOpen = false; popupBuffer = null; popupPeaks = null;

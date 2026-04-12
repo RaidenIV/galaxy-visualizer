@@ -42,7 +42,7 @@ export function clearAudioLoop() {
     // Update loop button UI
     const loopBtn = document.getElementById('loop-btn');
     if (loopBtn) {
-        loopBtn.textContent = '⌁ Loop';
+        loopBtn.textContent = 'Loop';
         loopBtn.classList.remove('loop-active');
     }
 }
@@ -148,7 +148,7 @@ export async function loadAudioFile(file) {
         playBtn.className   = 'play';
         if (loopBtn) {
             loopBtn.disabled    = false;
-            loopBtn.textContent = '⌁ Loop';
+            loopBtn.textContent = 'Loop';
             loopBtn.classList.remove('loop-active');
         }
         audioNameEl.textContent = file.name;
