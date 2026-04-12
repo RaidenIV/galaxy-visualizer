@@ -78,10 +78,10 @@ let Mp4MuxerLib = null;
 
 // ── PNG sequence state (#10) ──
 export let isPngSequence = false;
-let pngFrames      = [];   // [{name, blob}] when no FS access
+let pngFrames      = [];   // ordered [{ name, data }] entries when no FS access
 let pngDirHandle   = null; // FileSystemDirectoryHandle when available
 let pngFrameCount  = 0;
-let pngPendingWrites = 0;  // track in-flight toBlob calls so finalize waits for them
+let pngPendingWrites = 0;  // track in-flight canvas encodes / writes so finalize waits for them
 
 let renderProgressOverlay = null;
 let renderProgressTitle = null;
@@ -386,6 +386,34 @@ function destroyRecordingPipeline() {
     recFinalComposer = null;
     recBloomPass = null;
     recFinalPass = null;
+}
+
+function canvasToPngBytes(canvas) {
+    return new Promise((resolve, reject) => {
+        const finish = async (blob) => {
+            try {
+                if (blob) {
+                    resolve(new Uint8Array(await blob.arrayBuffer()));
+                    return;
+                }
+                const dataUrl = canvas.toDataURL('image/png');
+                const base64 = dataUrl.split(',')[1] || '';
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                resolve(bytes);
+            } catch (err) {
+                reject(err);
+            }
+        };
+
+        try {
+            if (canvas.toBlob) canvas.toBlob((blob) => { finish(blob).catch(reject); }, 'image/png');
+            else finish(null).catch(reject);
+        } catch (err) {
+            reject(err);
+        }
+    });
 }
 
 function renderOffscreen() {
@@ -735,38 +763,51 @@ export function captureFrame(now) {
         const audioSec = state.audioElement
             ? Math.max(0, state.audioElement.currentTime - (exportRange?.start ?? 0))
             : pngFrameCount / mp4FrameRate;
-        const totalFrames = Math.ceil((exportRange.end - exportRange.start) * mp4FrameRate);
-        const expectedFrame = Math.min(totalFrames - 1, Math.floor(audioSec * mp4FrameRate));
-        // Number of slots to fill: at least 1, up to however many audio has advanced past
-        const slotsToFill = Math.max(1, expectedFrame - pngFrameCount + 1);
+        const totalFrames = Math.max(1, Math.ceil((exportRange.end - exportRange.start) * mp4FrameRate));
+        const remainingFrames = Math.max(0, totalFrames - pngFrameCount);
 
-        for (let s = 0; s < slotsToFill; s++) {
-            const frameNum = (pngFrameCount + s).toString().padStart(6, '0');
-            const name = `frame_${frameNum}.png`;
+        if (remainingFrames > 0) {
+            const expectedFrame = Math.min(totalFrames - 1, Math.floor(audioSec * mp4FrameRate));
+            const slotsToFill = Math.min(remainingFrames, Math.max(1, expectedFrame - pngFrameCount + 1));
+            const frameTargets = Array.from({ length: slotsToFill }, (_, s) => {
+                const frameIndex = pngFrameCount + s;
+                return {
+                    index: frameIndex,
+                    name: `frame_${String(frameIndex).padStart(6, '0')}.png`,
+                };
+            });
+
+            pngFrameCount += slotsToFill;
             pngPendingWrites++;
-            // All slotsToFill calls read the same canvas state → identical images,
-            // which is correct: the GPU rendered one frame, we duplicate it to fill
-            // the elapsed time at the target frame rate.
-            recCanvas.toBlob(async (blob) => {
+            canvasToPngBytes(recCanvas).then(async (data) => {
                 try {
-                    if (pngDirHandle) {
-                        const fh = await pngDirHandle.getFileHandle(name, { create: true });
-                        const wr = await fh.createWritable();
-                        await wr.write(blob);
-                        await wr.close();
-                    } else {
-                        const data = new Uint8Array(await blob.arrayBuffer());
-                        pngFrames.push({ name, data });
+                    for (const target of frameTargets) {
+                        if (pngDirHandle) {
+                            const fh = await pngDirHandle.getFileHandle(target.name, { create: true });
+                            const wr = await fh.createWritable();
+                            await wr.write(data);
+                            await wr.close();
+                        } else {
+                            pngFrames[target.index] = { name: target.name, data };
+                        }
                     }
-                } catch (_) {} finally { pngPendingWrites--; }
-            }, 'image/png');
+                } catch (err) {
+                    console.error('PNG sequence write failed:', err);
+                } finally {
+                    pngPendingWrites--;
+                }
+            }).catch((err) => {
+                console.error('PNG sequence encode failed:', err);
+                pngPendingWrites--;
+            });
         }
-        pngFrameCount += slotsToFill;
 
         if (exportRange && state.audioElement) {
             const t = Math.max(exportRange.start, Math.min(exportRange.end, state.audioElement.currentTime));
-            updateRenderProgressOverlay((t - exportRange.start) / Math.max(0.0001, exportRange.end - exportRange.start), t, exportRange.end);
-            if (!stopRequested && (t >= exportRange.end - 1 / Math.max(120, mp4FrameRate * 2) || state.audioElement.ended)) {
+            const timeProgress = (t - exportRange.start) / Math.max(0.0001, exportRange.end - exportRange.start);
+            const frameProgress = pngFrameCount / totalFrames;
+            updateRenderProgressOverlay(Math.max(timeProgress, frameProgress), t, exportRange.end);
+            if (!stopRequested && (pngFrameCount >= totalFrames || t >= exportRange.end - 1 / Math.max(120, mp4FrameRate * 2) || state.audioElement.ended)) {
                 stopRequested = true;
                 queueMicrotask(() => stopPngSequenceExport(false));
             }
@@ -849,8 +890,8 @@ export async function startPngSequenceExport() {
         start: loopOnly ? state.loopStart : 0,
         end:   loopOnly ? state.loopEnd   : state.audioElement.duration,
     };
-    const duration     = exportRange.end - exportRange.start;
-    const targetFrames = Math.ceil(duration * mp4FrameRate);
+    const duration     = Math.max(0, exportRange.end - exportRange.start);
+    const targetFrames = Math.max(1, Math.ceil(duration * mp4FrameRate));
 
     // Try File System Access API first (Chrome/Edge 86+)
     pngDirHandle = null;
@@ -858,14 +899,20 @@ export async function startPngSequenceExport() {
         try {
             pngDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
         } catch (e) {
-            if (e.name === 'AbortError') return;
+            if (e.name === 'AbortError') {
+                exportRange = null;
+                return;
+            }
             pngDirHandle = null;
         }
     }
 
     if (!pngDirHandle && targetFrames > 1800) {
         const ok = confirm(`PNG sequence may produce up to ${targetFrames} frames in memory. Consider using File System Access (allow folder picker) for unlimited length. Continue?`);
-        if (!ok) return;
+        if (!ok) {
+            exportRange = null;
+            return;
+        }
     }
 
     const bytesPerFrame = (preset.width * preset.height * 3) / 10;
@@ -881,23 +928,31 @@ export async function startPngSequenceExport() {
     mp4NextFrameDueMs  = null;
     mp4LastTimestampUs = -1;
 
-    muteLiveAudioForExport();
-    suspendAudioLoopEnforcement(true);
-    try { state.audioElement.pause(); } catch (_) {}
-    state.audioElement.currentTime = exportRange.start;
-    await state.audioElement.play();
-    state.isPlaying = true;
-    syncPlayButton(true);
+    try {
+        muteLiveAudioForExport();
+        suspendAudioLoopEnforcement(true);
+        try { state.audioElement.pause(); } catch (_) {}
+        state.audioElement.currentTime = exportRange.start;
+        await state.audioElement.play();
+        state.isPlaying = true;
+        syncPlayButton(true);
 
-    // ── Set recording flags AFTER audio is positioned and confirmed playing ──
-    // If set earlier, captureFrame fires while audioElement.ended may still be true
-    // from a previous playthrough, triggering the stop condition immediately.
-    isPngSequence     = true;
-    state.isRecording = true;
+        // ── Set recording flags AFTER audio is positioned and confirmed playing ──
+        // If set earlier, captureFrame fires while audioElement.ended may still be true
+        // from a previous playthrough, triggering the stop condition immediately.
+        isPngSequence     = true;
+        state.isRecording = true;
 
-    showPngProgressOverlay(preset, exportRange, targetFrames);
-    if (pngSeqBtn) pngSeqBtn.textContent = 'Cancel';
-    captureStatus.textContent = `Exporting PNG sequence — target ${targetFrames} frames · ${mp4FrameRate} fps · ${preset.label.replace(' MP4','')}…`;
+        showPngProgressOverlay(preset, exportRange, targetFrames);
+        if (pngSeqBtn) pngSeqBtn.textContent = 'Cancel';
+        captureStatus.textContent = `Exporting PNG sequence — target ${targetFrames} frames · ${mp4FrameRate} fps · ${preset.label.replace(' MP4','')}…`;
+    } catch (e) {
+        suspendAudioLoopEnforcement(false);
+        restoreLiveAudioAfterExport();
+        destroyRecordingPipeline();
+        exportRange = null;
+        captureStatus.textContent = 'PNG sequence export failed to start: ' + e.message;
+    }
 }
 
 async function stopPngSequenceExport(cancelled = false) {
@@ -925,16 +980,17 @@ async function stopPngSequenceExport(cancelled = false) {
             updateRenderProgressOverlay(1, 0, 0, 'Finalising…');
             while (pngPendingWrites > 0) await new Promise(r => setTimeout(r, 50));
 
-            if (!pngDirHandle && pngFrames.length > 0) {
+            const orderedFrames = pngFrames.filter(Boolean);
+            if (!pngDirHandle && orderedFrames.length > 0) {
                 updateRenderProgressOverlay(1, 0, 0, 'Compressing frames…');
-                captureStatus.textContent = `Compressing ${pngFrames.length} frames…`;
+                captureStatus.textContent = `Compressing ${orderedFrames.length} frames…`;
                 const { zipSync } = await loadFflate();
                 const fileMap = {};
-                for (const { name, data } of pngFrames) fileMap[name] = [data, { level: 0 }];
+                for (const { name, data } of orderedFrames) fileMap[name] = [data, { level: 0 }];
                 const zipped  = zipSync(fileMap);
                 const zipBlob = new Blob([zipped], { type: 'application/zip' });
                 downloadBlob(zipBlob, `galaxy_frames_${Date.now()}.zip`);
-                captureStatus.textContent = `PNG sequence saved (${pngFrames.length} frames · ${formatBytes(zipBlob.size)}).`;
+                captureStatus.textContent = `PNG sequence saved (${orderedFrames.length} frames · ${formatBytes(zipBlob.size)}).`;
             } else if (pngDirHandle) {
                 captureStatus.textContent = `PNG sequence saved to folder (${pngFrameCount} frames).`;
             } else {

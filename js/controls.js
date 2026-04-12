@@ -403,7 +403,19 @@ document.getElementById('cinema-auto-advance').addEventListener('change', (e) =>
 
 // ── Preset manager ──
 const PRESET_COUNT   = 4;
+const ACTIVE_PRESET_STORAGE_KEY = 'galaxy_active_preset_slot';
 const presetStatusEl = document.getElementById('preset-status');
+let activePresetSlot = (() => {
+    const raw = localStorage.getItem(ACTIVE_PRESET_STORAGE_KEY);
+    const idx = Number.parseInt(raw ?? '', 10);
+    return Number.isInteger(idx) && idx >= 0 && idx < PRESET_COUNT ? idx : -1;
+})();
+
+function setActivePresetSlot(index = -1) {
+    activePresetSlot = Number.isInteger(index) && index >= 0 && index < PRESET_COUNT ? index : -1;
+    if (activePresetSlot >= 0) localStorage.setItem(ACTIVE_PRESET_STORAGE_KEY, String(activePresetSlot));
+    else localStorage.removeItem(ACTIVE_PRESET_STORAGE_KEY);
+}
 
 function gatherState() {
     return {
@@ -519,10 +531,11 @@ function buildPresetSlots() {
     for (let i = 0; i < PRESET_COUNT; i++) {
         const raw   = localStorage.getItem(`galaxy_preset_${i}`);
         const saved = raw ? JSON.parse(raw) : null;
+        const isActive = !!saved && i === activePresetSlot;
         const row   = document.createElement('div');
         row.style.cssText = 'display:grid;grid-template-columns:1fr auto auto;gap:5px;margin:4px 0;align-items:center;';
         const label   = document.createElement('span');
-        label.style.cssText = 'font-size:12px;color:#aaa;';
+        label.style.cssText = `font-size:12px;color:${isActive ? 'rgba(91,143,255,1)' : '#aaa'};font-weight:${isActive ? '700' : '500'};text-shadow:${isActive ? '0 0 10px rgba(91,143,255,0.35)' : 'none'};`;
         label.textContent   = saved ? (saved._name || `Preset ${i+1}`) : `Empty ${i+1}`;
         const saveBtn = document.createElement('button');
         saveBtn.className = 'secondary-btn';
@@ -545,7 +558,13 @@ function buildPresetSlots() {
         });
         loadBtn.addEventListener('click', () => {
             const snap = JSON.parse(localStorage.getItem(`galaxy_preset_${i}`));
-            if (snap) { applyStateSnapshot(snap); presetStatusEl.textContent = `Loaded "${snap._name || `Preset ${i+1}`}"`; setTimeout(() => { presetStatusEl.textContent = ''; }, 2000); }
+            if (snap) {
+                applyStateSnapshot(snap);
+                setActivePresetSlot(i);
+                buildPresetSlots();
+                presetStatusEl.textContent = `Loaded "${snap._name || `Preset ${i+1}`}"`;
+                setTimeout(() => { presetStatusEl.textContent = ''; }, 2000);
+            }
         });
         row.appendChild(label); row.appendChild(saveBtn); row.appendChild(loadBtn);
         container.appendChild(row);
@@ -579,7 +598,10 @@ document.getElementById('preset-import-btn').addEventListener('click', () => {
                 for (let i = 0; i < PRESET_COUNT; i++) {
                     if (data[`preset_${i}`]) localStorage.setItem(`galaxy_preset_${i}`, JSON.stringify(data[`preset_${i}`]));
                 }
-                if (data._current) applyStateSnapshot(data._current);
+                if (data._current) {
+                    applyStateSnapshot(data._current);
+                    setActivePresetSlot(-1);
+                }
                 buildPresetSlots();
                 presetStatusEl.textContent = 'Imported!';
                 setTimeout(() => { presetStatusEl.textContent = ''; }, 2000);
@@ -594,6 +616,7 @@ document.getElementById('preset-import-btn').addEventListener('click', () => {
 // ── Reset to defaults ──
 const captureStatus = document.getElementById('capture-status');
 document.getElementById('reset-btn').addEventListener('click', () => {
+    setActivePresetSlot(-1);
     volumeSlider.value = 100; volumeValue.textContent = '100%';
     state.isMuted = false; syncMuteUI(); updateAudioGain();
     document.getElementById('reactivity-slider').value = 100;
@@ -718,6 +741,7 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     });
 
     hideLightning();
+    buildPresetSlots();
 });
 
 // ── Minimize panel ──
