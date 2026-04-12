@@ -46,14 +46,17 @@ function animate(now = performance.now()) {
         document.getElementById('duration-time').textContent = `${dm}:${ds.toString().padStart(2,'0')}`;
     }
 
-    // Keep the galaxy alive when audio is loaded but paused.
-    // Audio-reactive values below already fall back to gentle idle motion when not playing.
+    // Freeze when paused
+    if (state.audioLoaded && !state.isPlaying) {
+        camera.layers.set(BLOOM_LAYER);
+        bloomComposer.render();
+        camera.layers.set(0);
+        finalComposer.render();
+        return;
+    }
 
     state.frameCount++;
     state.time += dt;
-
-    // Update audio analysis every frame so reactive values stay current
-    analyzeAudio(dt);
 
     // Effective audio values
     const rawAI = state.isPlaying ? state.currentAudioInfluence : 0.3;
@@ -131,8 +134,7 @@ function animate(now = performance.now()) {
     controls.update();
 
     // ── Galaxy rotation ──
-    // Always rotate — ai/lowAI/midAI already fall back to gentle idle values when paused.
-    {
+    if (state.isPlaying || !state.audioLoaded) {
         const rotAI    = Math.min(1, ai + midAI * state.midRotationWeight);
         const rotSpeed = 0.05 * rotAI * dt * 60 * 0.5;
         rotateGalaxyParticles(rotSpeed);

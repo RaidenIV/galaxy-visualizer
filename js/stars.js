@@ -76,12 +76,12 @@ export const starMat = new THREE.ShaderMaterial({
         varying   float vSpike;
         varying   float vGlow;
         void main() {
-            float baseTwinkle = 1.0 + 0.20 * sin(uTime * 3.2 + aPhase)
-                                     + 0.10 * sin(uTime * 8.4 + aPhase * 1.7);
-            float flickerBucket = floor(uTime * (2.4 + 2.0 * fract(sin(aPhase * 12.9898) * 43758.5453)) + aPhase * 23.0);
+            float baseTwinkle = 1.0 + 0.08 * sin(uTime * 3.1 + aPhase)
+                                     + 0.04 * sin(uTime * 7.3 + aPhase * 1.7);
+            float flickerBucket = floor(uTime * (2.2 + 1.8 * fract(sin(aPhase * 12.9898) * 43758.5453)) + aPhase * 23.0);
             float randomFlicker = fract(sin(flickerBucket * 78.233 + aPhase * 37.719) * 43758.5453);
-            float flicker = mix(0.72, 1.38, randomFlicker);
-            float twinkle = baseTwinkle * mix(1.0, flicker, 0.86);
+            float flicker = mix(0.82, 1.22, randomFlicker);
+            float twinkle = baseTwinkle * mix(1.0, flicker, 0.60);
             vColor = aColor; vBright = aBright * twinkle; vSpike = aSpike; vGlow = aBright * twinkle;
             vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
             gl_PointSize = aSize * uAudioInfluence * (0.92 + twinkle * 0.38) * (390.0 / -mvPos.z);
@@ -119,8 +119,4 @@ export const starMat = new THREE.ShaderMaterial({
 const starMesh = new THREE.Points(starGeo, starMat);
 scene.add(starMesh);
 starMesh.layers.enable(BLOOM_LAYER);
-starMesh.onBeforeRender = () => {
-    starMat.uniforms.uTime.value = performance.now() * 0.001;
-    starMat.uniforms.uAudioInfluence.value = 0.72 + Math.min(0.40, state.currentAudioInfluence * 0.60);
-};
 starGeo.setDrawRange(0, state.activeStarCount);
