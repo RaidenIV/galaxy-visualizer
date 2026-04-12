@@ -16,6 +16,11 @@ import { scatterMat } from './scatter.js';
 const captureStatus = document.getElementById('capture-status');
 const recordBtn = document.getElementById('record-btn');
 const frameBtn = document.getElementById('frame-btn');
+const exportKindMp4 = document.getElementById('export-kind-mp4');
+const exportKindPng = document.getElementById('export-kind-png');
+const exportKindValue = document.getElementById('export-kind-value');
+const mp4Settings = document.getElementById('mp4-export-settings');
+const pngSettings = document.getElementById('png-export-settings');
 const formatSelect = document.getElementById('record-format-select');
 const bitrateSelect = document.getElementById('record-bitrate-select');
 const bitrateRow = document.getElementById('record-bitrate-row');
@@ -31,6 +36,7 @@ const frameSizeSelect = document.getElementById('frame-size-select');
 const frameSizeValue = document.getElementById('frame-size-value');
 const frameOrientationSelect = document.getElementById('frame-orientation-select');
 const frameOrientationValue = document.getElementById('frame-orientation-value');
+const recordEstimateLine = document.getElementById('record-estimate-line');
 const playBtn = document.getElementById('play-btn');
 
 const EXPORT_PRESETS = {
@@ -76,6 +82,10 @@ let renderProgressBar = null;
 let renderProgressPct = null;
 let renderProgressSub = null;
 let renderProgressCancelBtn = null;
+let exportEstimatedBytes = 0;
+let silentMonitorGain = null;
+let exportElementMutedBefore = false;
+let liveGainWasConnectedBeforeExport = false;
 
 function ensureRenderProgressOverlay() {
     if (renderProgressOverlay) return;
@@ -90,7 +100,11 @@ function ensureRenderProgressOverlay() {
         justify-content: center;
         pointer-events: none;
         z-index: 5000;
+        background: rgba(0,0,0,0.88);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
     }
+    body.export-in-progress #beat-flash { display: none !important; }
     .render-progress-overlay.show { display: flex; }
     .render-progress-card {
         width: min(360px, calc(100vw - 32px));
@@ -195,9 +209,10 @@ function ensureRenderProgressOverlay() {
 function showRenderProgressOverlay(preset, range) {
     ensureRenderProgressOverlay();
     renderProgressTitle.textContent = 'Rendering MP4';
-    renderProgressMeta.textContent = `${preset.label} · ${mp4FrameRate} fps · ${range.loopOnly ? 'Selected Loop' : 'Full Audio'}`;
+    renderProgressMeta.textContent = `${preset.label} · ${mp4FrameRate} fps · ${range.loopOnly ? 'Selected Loop' : 'Full Audio'} · Est. ${formatBytes(exportEstimatedBytes)}`;
     renderProgressCancelBtn.disabled = false;
     updateRenderProgressOverlay(0, range.start, range.end, 'Starting export…');
+    document.body.classList.add('export-in-progress');
     renderProgressOverlay.classList.add('show');
 }
 
@@ -207,15 +222,16 @@ function updateRenderProgressOverlay(progress, currentTime, endTime, subText = '
     renderProgressBar.style.width = `${(clamped * 100).toFixed(2)}%`;
     renderProgressPct.textContent = `${Math.round(clamped * 100)}%`;
     if (subText) {
-        renderProgressSub.textContent = subText;
+        renderProgressSub.textContent = `${subText} · Est. ${formatBytes(exportEstimatedBytes)}`;
         return;
     }
-    renderProgressSub.textContent = `${formatClock(currentTime)} / ${formatClock(endTime)}`;
+    renderProgressSub.textContent = `${formatClock(currentTime)} / ${formatClock(endTime)} · Est. ${formatBytes(exportEstimatedBytes)}`;
 }
 
 function hideRenderProgressOverlay() {
     if (!renderProgressOverlay) return;
     renderProgressOverlay.classList.remove('show');
+    document.body.classList.remove('export-in-progress');
 }
 
 function formatClock(seconds) {
@@ -223,6 +239,39 @@ function formatClock(seconds) {
     const mins = Math.floor(safe / 60);
     const secs = safe - mins * 60;
     return `${mins}:${secs.toFixed(2).padStart(5, '0')}`;
+}
+
+function formatBytes(bytes) {
+    const safe = Math.max(0, Number.isFinite(bytes) ? bytes : 0);
+    if (safe >= 1024 ** 3) return `${(safe / (1024 ** 3)).toFixed(2)} GB`;
+    if (safe >= 1024 ** 2) return `${(safe / (1024 ** 2)).toFixed(1)} MB`;
+    if (safe >= 1024) return `${Math.round(safe / 1024)} KB`;
+    return `${Math.round(safe)} B`;
+}
+
+function getEstimatedExportBytes() {
+    if (!state.audioElement?.duration) return 0;
+    const preset = getSelectedPreset();
+    const loopOnly = getLoopOnlyActive();
+    const duration = Math.max(0, loopOnly ? (state.loopEnd - state.loopStart) : state.audioElement.duration);
+    const videoBitrateMbps = Math.max(1, parseInt(bitrateSelect?.value || '16', 10) || 16);
+    const audioBitrateMbps = 0.192;
+    const totalBits = duration * ((videoBitrateMbps + audioBitrateMbps) * 1_000_000) * 1.02;
+    return totalBits / 8;
+}
+
+function syncEstimatedSizeUI() {
+    exportEstimatedBytes = getEstimatedExportBytes();
+    if (recordEstimateLine) recordEstimateLine.textContent = `Estimated file size: ${formatBytes(exportEstimatedBytes)}`;
+}
+
+function setExportKind(kind) {
+    const usePng = kind === 'png';
+    if (exportKindMp4) exportKindMp4.checked = !usePng;
+    if (exportKindPng) exportKindPng.checked = usePng;
+    if (exportKindValue) exportKindValue.textContent = usePng ? 'PNG' : 'MP4';
+    if (mp4Settings) mp4Settings.style.display = usePng ? 'none' : '';
+    if (pngSettings) pngSettings.style.display = usePng ? '' : 'none';
 }
 
 function syncPlayButton(isPlaying) {
@@ -399,8 +448,11 @@ async function startAudioEncoding(sampleRate) {
         ad.close();
         audioTsUs += Math.round((n / sr) * 1_000_000);
     };
+    silentMonitorGain = state.audioContext.createGain();
+    silentMonitorGain.gain.value = 0;
     state.gainNode.connect(scriptNode);
-    scriptNode.connect(state.audioContext.destination);
+    scriptNode.connect(silentMonitorGain);
+    silentMonitorGain.connect(state.audioContext.destination);
     return true;
 }
 
@@ -409,6 +461,28 @@ function stopAudioEncoding() {
         try { scriptNode.disconnect(); } catch (_) {}
         scriptNode = null;
     }
+    if (silentMonitorGain) {
+        try { silentMonitorGain.disconnect(); } catch (_) {}
+        silentMonitorGain = null;
+    }
+}
+
+function muteLiveAudioForExport() {
+    exportElementMutedBefore = !!state.audioElement?.muted;
+    if (state.audioElement) state.audioElement.muted = true;
+    liveGainWasConnectedBeforeExport = !!(state.gainNode && state.gainNodeConnected);
+    if (state.gainNode && state.audioContext?.destination && state.gainNodeConnected) {
+        try { state.gainNode.disconnect(state.audioContext.destination); } catch (_) {}
+        state.gainNodeConnected = false;
+    }
+}
+
+function restoreLiveAudioAfterExport() {
+    if (state.audioElement) state.audioElement.muted = exportElementMutedBefore;
+    if (state.gainNode && state.audioContext?.destination && liveGainWasConnectedBeforeExport && !state.gainNodeConnected) {
+        try { state.gainNode.connect(state.audioContext.destination); state.gainNodeConnected = true; } catch (_) {}
+    }
+    liveGainWasConnectedBeforeExport = false;
 }
 
 function getLoopOnlyActive() {
@@ -424,6 +498,7 @@ function syncRangeUI() {
             ? 'Exports the full track by default. Turn on the option below to export only the selected loop.'
             : 'No loop is active right now, so Record will export the full track.';
     }
+    syncEstimatedSizeUI();
 }
 
 function syncFormatUI() {
@@ -479,6 +554,7 @@ async function startMP4Export() {
     if (state.audioContext && state.audioContext.state === 'suspended') {
         try { await state.audioContext.resume(); } catch (_) {}
     }
+    exportEstimatedBytes = getEstimatedExportBytes();
 
     const { Muxer, ArrayBufferTarget } = await loadMp4Muxer();
     const sampleRate = state.audioContext ? state.audioContext.sampleRate : 48000;
@@ -501,6 +577,7 @@ async function startMP4Export() {
     });
     mp4Video.configure({ codec, width: preset.width, height: preset.height, bitrate, framerate: mp4FrameRate, latencyMode: 'quality' });
 
+    muteLiveAudioForExport();
     if (aOk) await startAudioEncoding(sampleRate);
 
     mp4FrameCount = 0;
@@ -549,7 +626,7 @@ async function stopMP4Export(cancelled = false) {
             const preset = getSelectedPreset();
             const suffix = exportRange?.loopOnly ? '_loop' : '_full';
             downloadBlob(blob, `galaxy_${preset.height}p${suffix}_${Date.now()}.mp4`);
-            captureStatus.textContent = `MP4 saved (${mp4FrameCount} frames).`;
+            captureStatus.textContent = `MP4 saved (${mp4FrameCount} frames · ${formatBytes(blob.size)}).`;
         } else if (cancelled) {
             captureStatus.textContent = 'Export cancelled.';
         }
@@ -558,6 +635,7 @@ async function stopMP4Export(cancelled = false) {
         captureStatus.textContent = 'Export failed: ' + e.message;
     } finally {
         suspendAudioLoopEnforcement(false);
+        restoreLiveAudioAfterExport();
         mp4Video = null;
         mp4Muxer = null;
         destroyRecordingPipeline();
@@ -633,7 +711,10 @@ fpsSelect?.addEventListener('change', syncFormatUI);
 loopOnlyToggle?.addEventListener('change', syncRangeUI);
 frameSizeSelect?.addEventListener('change', syncFrameUI);
 frameOrientationSelect?.addEventListener('change', syncFrameUI);
+exportKindMp4?.addEventListener('change', () => setExportKind(exportKindMp4.checked ? 'mp4' : 'png'));
+exportKindPng?.addEventListener('change', () => setExportKind(exportKindPng.checked ? 'png' : 'mp4'));
 document.addEventListener('galaxy-loop-updated', syncRangeUI);
+setExportKind('mp4');
 syncFormatUI();
 syncFrameUI();
 
