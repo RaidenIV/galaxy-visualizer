@@ -93,6 +93,24 @@ export function analyzeAudio() {
     let sumHigh = 0;
     for (let i = hi2000; i <= hi8000 && i < buf.length; i++) sumHigh += buf[i];
     state.currentHighFreq = sumHigh / (Math.max(1, hi8000 - hi2000 + 1) * 255);
+
+    // ── Spectral flux onset detection (#3) ──
+    // Sum positive per-bin differences between this frame and the last.
+    // This reacts to the *onset* of energy rather than its absolute level,
+    // giving much tighter beat pulses on transient-heavy material.
+    if (state.prevFreqBuf && state.prevFreqBuf.length === buf.length) {
+        let flux = 0;
+        for (let k = 0; k < buf.length; k++) {
+            const diff = buf[k] - state.prevFreqBuf[k];
+            if (diff > 0) flux += diff;
+        }
+        flux /= (buf.length * 255);
+        state.spectralFlux = flux;
+        state.spectralFluxHistory[state.spectralFluxHistoryIdx] = flux;
+        state.spectralFluxHistoryIdx = (state.spectralFluxHistoryIdx + 1) % state.spectralFluxHistory.length;
+    }
+    if (!state.prevFreqBuf) state.prevFreqBuf = new Uint8Array(buf.length);
+    state.prevFreqBuf.set(buf);
 }
 
 // ── Load audio file ──

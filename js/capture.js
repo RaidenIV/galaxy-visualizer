@@ -76,6 +76,13 @@ let exportCancelled = false;
 export let isMP4Recording = false;
 let Mp4MuxerLib = null;
 
+// ── PNG sequence state (#10) ──
+export let isPngSequence = false;
+let pngFrames      = [];   // [{name, blob}] when no FS access
+let pngDirHandle   = null; // FileSystemDirectoryHandle when available
+let pngFrameCount  = 0;
+let pngPendingWrites = 0;  // track in-flight toBlob calls so finalize waits for them
+
 let renderProgressOverlay = null;
 let renderProgressTitle = null;
 let renderProgressMeta = null;
@@ -226,6 +233,47 @@ function showRenderProgressOverlay(preset, range) {
     updateRenderProgressOverlay(0, range.start, range.end, 'Starting export…');
     document.body.classList.add('export-in-progress');
     renderProgressOverlay.classList.add('show');
+
+    // #6: Draw audio waveform as the progress-bar background
+    const trackEl = renderProgressOverlay.querySelector('.render-progress-track');
+    if (trackEl) drawWaveformBackground(trackEl, range.start, range.end);
+}
+
+// Decodes the loaded audio file and paints a waveform into the track element background (#6)
+async function drawWaveformBackground(trackEl, rangeStart, rangeEnd) {
+    if (!state.audioFile || !state.audioContext) return;
+    try {
+        const ab = await state.audioFile.arrayBuffer();
+        // Decode a separate copy — doesn't disturb the live AudioContext graph
+        const tmpCtx = new OfflineAudioContext(1, 1, state.audioContext.sampleRate);
+        const audioBuffer = await tmpCtx.decodeAudioData(ab);
+        const ch = audioBuffer.getChannelData(0);
+        const totalSec = audioBuffer.duration;
+        const s0 = Math.floor((rangeStart / totalSec) * ch.length);
+        const s1 = Math.floor((rangeEnd   / totalSec) * ch.length);
+        const span = Math.max(1, s1 - s0);
+
+        const W = 300, H = 10;
+        const cv = document.createElement('canvas');
+        cv.width = W; cv.height = H;
+        const ctx = cv.getContext('2d');
+        ctx.clearRect(0, 0, W, H);
+
+        for (let x = 0; x < W; x++) {
+            const si = s0 + Math.floor(x * span / W);
+            const ei = Math.min(ch.length, si + Math.max(1, Math.floor(span / W)));
+            let peak = 0;
+            for (let s = si; s < ei; s++) { const v = Math.abs(ch[s]); if (v > peak) peak = v; }
+            const barH = Math.max(1, Math.round(peak * H));
+            const alpha = 0.18 + peak * 0.45;
+            ctx.fillStyle = `rgba(91,143,255,${alpha.toFixed(2)})`;
+            ctx.fillRect(x, Math.round((H - barH) / 2), 1, barH);
+        }
+
+        trackEl.style.backgroundImage  = `url(${cv.toDataURL()})`;
+        trackEl.style.backgroundSize   = '100% 100%';
+        trackEl.style.backgroundRepeat = 'no-repeat';
+    } catch (_) { /* silently skip if decode fails */ }
 }
 
 function updateRenderProgressOverlay(progress, currentTime, endTime, subText = '') {
@@ -717,6 +765,41 @@ export function captureFrame(now) {
     if (!state.isRecording || !recCanvas) return;
     renderOffscreen();
 
+    // ── PNG sequence frame capture (#10) ──
+    if (isPngSequence) {
+        if (mp4StartTime === null) { mp4StartTime = now; mp4NextFrameDueMs = now; }
+        if (now >= mp4NextFrameDueMs) {
+            const frameNum = pngFrameCount.toString().padStart(6, '0');
+            const name = `frame_${frameNum}.png`;
+            pngPendingWrites++;
+            recCanvas.toBlob(async (blob) => {
+                try {
+                    if (pngDirHandle) {
+                        const fh = await pngDirHandle.getFileHandle(name, { create: true });
+                        const wr = await fh.createWritable();
+                        await wr.write(blob);
+                        await wr.close();
+                    } else {
+                        const data = new Uint8Array(await blob.arrayBuffer());
+                        pngFrames.push({ name, data });
+                    }
+                } catch (_) {} finally { pngPendingWrites--; }
+            }, 'image/png');
+            pngFrameCount++;
+            mp4NextFrameDueMs += 1000 / mp4FrameRate;
+        }
+
+        if (exportRange && state.audioElement) {
+            const t = Math.max(exportRange.start, Math.min(exportRange.end, state.audioElement.currentTime));
+            updateRenderProgressOverlay((t - exportRange.start) / Math.max(0.0001, exportRange.end - exportRange.start), t, exportRange.end);
+            if (!stopRequested && (t >= exportRange.end - 1 / Math.max(120, mp4FrameRate * 2) || state.audioElement.ended)) {
+                stopRequested = true;
+                queueMicrotask(() => stopPngSequenceExport(false));
+            }
+        }
+        return;
+    }
+
     if (isMP4Recording && mp4Video && mp4Video.encodeQueueSize <= 15) {
         if (mp4StartTime === null) {
             mp4StartTime = now;
@@ -767,6 +850,137 @@ export function captureFrame(now) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────
+// PNG SEQUENCE EXPORT (#10)
+// Primary:  File System Access API  → writes frames directly to disk, no RAM limit
+// Fallback: fflate zip download     → accumulates in memory, zips at the end
+// ─────────────────────────────────────────────────────────────
+async function loadFflate() {
+    return import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js');
+}
+
+export async function startPngSequenceExport() {
+    if (!state.audioLoaded || !state.audioElement?.duration) {
+        captureStatus.textContent = 'Load an audio file first.';
+        return;
+    }
+
+    const preset  = getSelectedPreset();
+    mp4FrameRate  = getSelectedFps();
+    mp4FrameDurationUs = Math.round(1_000_000 / mp4FrameRate);
+
+    const loopOnly = getLoopOnlyActive();
+    exportRange = {
+        loopOnly,
+        start: loopOnly ? state.loopStart : 0,
+        end:   loopOnly ? state.loopEnd   : state.audioElement.duration,
+    };
+    const totalFrames = Math.ceil((exportRange.end - exportRange.start) * mp4FrameRate);
+
+    // Try File System Access API first (Chrome/Edge 86+)
+    pngDirHandle = null;
+    if (window.showDirectoryPicker) {
+        try {
+            pngDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        } catch (e) {
+            if (e.name === 'AbortError') return;
+            pngDirHandle = null; // fall back to in-memory zip
+        }
+    }
+
+    if (!pngDirHandle && totalFrames > 1800) {
+        // Warn: ~1800 frames × ~3 MB = ~5.4 GB uncompressed PNG in RAM
+        const ok = confirm(`PNG sequence will produce ${totalFrames} frames (~${Math.round(totalFrames * 3 / 1024)} GB uncompressed). Consider using File System Access or a shorter range. Continue?`);
+        if (!ok) return;
+    }
+
+    exportEstimatedBytes = totalFrames * preset.width * preset.height * 3; // rough uncompressed estimate
+    pngFrames       = [];
+    pngFrameCount   = 0;
+    pngPendingWrites = 0;
+    isPngSequence   = true;
+    state.isRecording = true;
+    stopRequested   = false;
+    exportCancelled = false;
+
+    buildRecordingPipeline(preset.width, preset.height);
+    showPngProgressOverlay(preset, exportRange, totalFrames);
+
+    mp4StartTime      = null;
+    mp4NextFrameDueMs = null;
+    mp4LastTimestampUs = -1;
+
+    muteLiveAudioForExport();
+    suspendAudioLoopEnforcement(true);
+    try { state.audioElement.pause(); } catch (_) {}
+    state.audioElement.currentTime = exportRange.start;
+    await state.audioElement.play();
+    state.isPlaying = true;
+    syncPlayButton(true);
+
+    if (pngSeqBtn) pngSeqBtn.textContent = 'Cancel PNG Seq';
+    captureStatus.textContent = `Exporting PNG sequence (${totalFrames} frames)…`;
+}
+
+async function stopPngSequenceExport(cancelled = false) {
+    if (!isPngSequence) return;
+    isPngSequence     = false;
+    state.isRecording = false;
+    exportCancelled   = cancelled;
+
+    try {
+        if (state.audioElement) {
+            try { state.audioElement.pause(); } catch (_) {}
+            state.isPlaying = false;
+            syncPlayButton(false);
+            state.audioElement.currentTime = exportRange?.start ?? 0;
+        }
+
+        if (!cancelled && !pngDirHandle && pngFrames.length > 0) {
+            updateRenderProgressOverlay(1, 0, 0, 'Compressing frames…');
+            captureStatus.textContent = `Compressing ${pngFrames.length} frames…`;
+            const { zipSync } = await loadFflate();
+            // Wait for any in-flight toBlob calls
+            while (pngPendingWrites > 0) await new Promise(r => setTimeout(r, 50));
+            const fileMap = {};
+            for (const { name, data } of pngFrames) fileMap[name] = [data, { level: 0 }];
+            const zipped  = zipSync(fileMap);
+            const zipBlob = new Blob([zipped], { type: 'application/zip' });
+            downloadBlob(zipBlob, `galaxy_frames_${Date.now()}.zip`);
+            captureStatus.textContent = `PNG sequence saved (${pngFrames.length} frames · ${formatBytes(zipBlob.size)}).`;
+        } else if (!cancelled && pngDirHandle) {
+            while (pngPendingWrites > 0) await new Promise(r => setTimeout(r, 50));
+            captureStatus.textContent = `PNG sequence saved to folder (${pngFrameCount} frames).`;
+        } else {
+            captureStatus.textContent = 'PNG sequence export cancelled.';
+        }
+    } catch (e) {
+        captureStatus.textContent = 'PNG sequence export failed: ' + e.message;
+    } finally {
+        suspendAudioLoopEnforcement(false);
+        restoreLiveAudioAfterExport();
+        destroyRecordingPipeline();
+        hideRenderProgressOverlay();
+        if (pngSeqBtn) pngSeqBtn.textContent = 'PNG Sequence';
+        pngFrames    = [];
+        pngDirHandle = null;
+        exportRange  = null;
+        stopRequested = false;
+    }
+}
+
+function showPngProgressOverlay(preset, range, totalFrames) {
+    ensureRenderProgressOverlay();
+    renderProgressTitle.textContent = 'Rendering PNG Sequence';
+    renderProgressMeta.textContent  = `${preset.label} · ${mp4FrameRate} fps · ${totalFrames} frames · ${pngDirHandle ? 'Saving to folder' : 'In-memory zip'}`;
+    renderProgressCancelBtn.disabled = false;
+    updateRenderProgressOverlay(0, range.start, range.end, 'Starting export…');
+    document.body.classList.add('export-in-progress');
+    renderProgressOverlay.classList.add('show');
+    const trackEl = renderProgressOverlay.querySelector('.render-progress-track');
+    if (trackEl) drawWaveformBackground(trackEl, range.start, range.end);
+}
+
 recordBtn.addEventListener('click', async () => {
     if (state.isRecording) {
         await stopMP4Export(true);
@@ -795,6 +1009,21 @@ frameOrientationSelect?.addEventListener('change', syncFrameUI);
 exportKindMp4?.addEventListener('change', () => setExportKind(exportKindMp4.checked ? 'mp4' : 'png'));
 exportKindPng?.addEventListener('change', () => setExportKind(exportKindPng.checked ? 'png' : 'mp4'));
 document.addEventListener('galaxy-loop-updated', syncRangeUI);
+
+// ── PNG Sequence button (#10) — inserted after the single-frame button ──
+let pngSeqBtn = document.getElementById('png-seq-btn');
+if (!pngSeqBtn && frameBtn) {
+    pngSeqBtn = document.createElement('button');
+    pngSeqBtn.id        = 'png-seq-btn';
+    pngSeqBtn.className = 'primary';
+    pngSeqBtn.textContent = 'PNG Sequence';
+    pngSeqBtn.title = 'Export every frame as a PNG file (requires audio loaded)';
+    frameBtn.parentNode.insertBefore(pngSeqBtn, frameBtn.nextSibling);
+}
+pngSeqBtn?.addEventListener('click', async () => {
+    if (isPngSequence) { await stopPngSequenceExport(true); }
+    else               { await startPngSequenceExport();    }
+});
 setExportKind('mp4');
 syncFormatUI();
 syncFrameUI();

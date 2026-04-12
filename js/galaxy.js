@@ -40,21 +40,90 @@ export const galaxyColorsBuf    = new Float32Array(N_GALAXY * 3);
 export const galaxyAlphasBuf    = new Float32Array(N_GALAXY);
 export const galaxySizesBuf     = new Float32Array(N_GALAXY);
 
+// ── LUT texture helpers (#5) ──
+function makeLutData(stops) {
+    const W = 256, data = new Uint8Array(W * 4);
+    for (let x = 0; x < W; x++) {
+        const t = x / (W - 1);
+        const c = sampleColormap(stops, t);
+        data[x*4]   = Math.round(Math.min(1, Math.max(0, c[0])) * 255);
+        data[x*4+1] = Math.round(Math.min(1, Math.max(0, c[1])) * 255);
+        data[x*4+2] = Math.round(Math.min(1, Math.max(0, c[2])) * 255);
+        data[x*4+3] = 255;
+    }
+    return data;
+}
+function makeLutTexture(stops) {
+    const tex = new THREE.DataTexture(makeLutData(stops), 256, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.minFilter = tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+}
+function updateLutTexture(tex, stops) {
+    tex.image.data.set(makeLutData(stops));
+    tex.needsUpdate = true;
+}
+
+// Persistent LUT textures — updated in-place to avoid per-frame allocation
+const _lutTexA = makeLutTexture(GALAXY_COLORMAPS[DEFAULT_CMAP_INDEX].stops);
+const _lutTexB = makeLutTexture(GALAXY_COLORMAPS[DEFAULT_CMAP_INDEX].stops);
+let _lastLutA = DEFAULT_CMAP_INDEX, _lastLutB = DEFAULT_CMAP_INDEX;
+
+// Called by main.js during auto-cycling instead of the CPU color loop
+export function setColormapLut(indexA, indexB, mix, reverse) {
+    if (indexA !== _lastLutA) { updateLutTexture(_lutTexA, GALAXY_COLORMAPS[indexA % GALAXY_COLORMAPS.length].stops); _lastLutA = indexA; }
+    if (indexB !== _lastLutB) { updateLutTexture(_lutTexB, GALAXY_COLORMAPS[indexB % GALAXY_COLORMAPS.length].stops); _lastLutB = indexB; }
+    galaxyMat.uniforms.uLutMix.value     = mix;
+    galaxyMat.uniforms.uLutReverse.value = reverse ? 1.0 : 0.0;
+}
+
 // ── Shaders ──
+// Vertex shader: samples LUT on GPU — eliminates 75k-particle CPU color loop each frame (#5)
 const galaxyVertShader = `
-    attribute vec3  aColor;
+    attribute float aNormR;
+    attribute float aWarmCore;
+    attribute float aArmGlow;
+    attribute float aDust;
+    attribute float aMidBlue;
+    attribute float aOuterCool;
     attribute float aAlpha;
     attribute float aSize;
-    uniform   float uBrightness;
-    uniform   float uPointScale;
-    varying   vec3  vColor;
-    varying   float vAlpha;
+    uniform sampler2D uLutA;
+    uniform sampler2D uLutB;
+    uniform float     uLutMix;
+    uniform float     uLutReverse;
+    uniform float     uDustIntensity;
+    uniform float     uTraditional;
+    uniform float     uMorphFade;
+    uniform float     uBrightness;
+    uniform float     uPointScale;
+    varying vec3  vColor;
+    varying float vAlpha;
     void main() {
-        vColor = aColor * uBrightness;
+        float t = pow(aNormR, 0.82);
+        t = uLutReverse > 0.5 ? (1.0 - t) : t;
+        t = clamp(t, 0.001, 0.999);
+        vec3 col = mix(texture2D(uLutA, vec2(t, 0.5)).rgb,
+                       texture2D(uLutB, vec2(t, 0.5)).rgb, uLutMix);
+        if (uTraditional > 0.5) {
+            float bright = (1.0 + 0.42*aWarmCore) * (1.0 + 0.10*aArmGlow)
+                         * (1.0 - aDust * 0.72 * uDustIntensity);
+            col = min(vec3(1.6), col * bright);
+        } else {
+            float warm=aWarmCore, arm=aArmGlow, dust=aDust, mid=aMidBlue, outer=aOuterCool;
+            col.r += (1.00-col.r)*0.78*warm; col.g += (0.94-col.g)*0.64*warm; col.b += (0.85-col.b)*0.40*warm;
+            col.r  = col.r*(1.0-0.08*mid-0.16*outer)+0.10*mid+0.04*outer;
+            col.g  = col.g*(1.0-0.03*mid           )+0.18*mid+0.07*outer;
+            col.b  = col.b*(1.0+0.10*mid+0.18*outer)+0.20*mid+0.12*outer;
+            col   *= vec3(0.94+0.14*arm, 0.96+0.18*arm, 1.00+0.30*arm);
+            float dm = 1.0 - dust*0.72*uDustIntensity;
+            col.r  *= dm*(1.0-0.08*outer); col.g *= dm*(0.98+0.03*mid); col.b *= dm*(0.98+0.08*mid+0.10*outer);
+        }
+        vColor = col * uBrightness;
         vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
         float viewDist = -mvPos.z;
         float depthBoost = clamp(1.22 - viewDist * 0.045, 0.68, 1.22);
-        vAlpha = aAlpha * depthBoost;
+        vAlpha = aAlpha * depthBoost * uMorphFade;
         gl_PointSize = aSize * uPointScale * (350.0 / max(0.001, viewDist));
         gl_Position  = projectionMatrix * mvPos;
     }
@@ -71,7 +140,18 @@ const galaxyFragShader = `
 `;
 
 export const galaxyMat = new THREE.ShaderMaterial({
-    uniforms: { pointTexture: { value: circleTexture }, uBrightness: { value: 1.0 }, uPointScale: { value: 1.0 } },
+    uniforms: {
+        pointTexture:   { value: circleTexture },
+        uBrightness:    { value: 1.0 },
+        uPointScale:    { value: 1.0 },
+        uLutA:          { value: _lutTexA },
+        uLutB:          { value: _lutTexB },
+        uLutMix:        { value: 0.0 },
+        uLutReverse:    { value: 1.0 },   // matches default state.reverseColorMap = true
+        uDustIntensity: { value: 1.0 },
+        uTraditional:   { value: 1.0 },   // matches default colorMapDistributionMode = 'traditional'
+        uMorphFade:     { value: 1.0 },   // #4 morph: fades to 0 on type change, back to 1 after rebuild
+    },
     vertexShader: galaxyVertShader,
     fragmentShader: galaxyFragShader,
     transparent: true,
@@ -81,9 +161,15 @@ export const galaxyMat = new THREE.ShaderMaterial({
 
 export const galaxyGeo = new THREE.BufferGeometry();
 galaxyGeo.setAttribute('position', new THREE.BufferAttribute(galaxyPositionsBuf, 3));
-galaxyGeo.setAttribute('aColor',   new THREE.BufferAttribute(galaxyColorsBuf, 3));
-galaxyGeo.setAttribute('aAlpha',   new THREE.BufferAttribute(galaxyAlphasBuf, 1));
-galaxyGeo.setAttribute('aSize',    new THREE.BufferAttribute(galaxySizesBuf, 1));
+// LUT attributes — per-particle data the GPU shader uses for colour stylization (#5)
+galaxyGeo.setAttribute('aNormR',    new THREE.BufferAttribute(galaxyNormR,       1));
+galaxyGeo.setAttribute('aWarmCore', new THREE.BufferAttribute(galaxyWarmCore,    1));
+galaxyGeo.setAttribute('aArmGlow',  new THREE.BufferAttribute(galaxyArmGlow,     1));
+galaxyGeo.setAttribute('aDust',     new THREE.BufferAttribute(galaxyDustWeight,  1));
+galaxyGeo.setAttribute('aMidBlue',  new THREE.BufferAttribute(galaxyMidBlue,     1));
+galaxyGeo.setAttribute('aOuterCool',new THREE.BufferAttribute(galaxyOuterCool,   1));
+galaxyGeo.setAttribute('aAlpha',    new THREE.BufferAttribute(galaxyAlphasBuf,   1));
+galaxyGeo.setAttribute('aSize',     new THREE.BufferAttribute(galaxySizesBuf,    1));
 
 export const galaxyGroup = new THREE.Group();
 galaxyGroup.rotateOnAxis(BEAM_TILT_AXIS, -40 * Math.PI / 180);
@@ -106,41 +192,21 @@ export function getGalaxyColorT(i) {
     return state.reverseColorMap ? (1.0 - t) : t;
 }
 
-function applyMixedGalaxyColor(i, baseColor) {
-    let [r, g, b] = baseColor;
-    const warm = galaxyWarmCore[i], armGlow = galaxyArmGlow[i], dust = galaxyDustWeight[i];
-    const midBlue = galaxyMidBlue[i], outerCool = galaxyOuterCool[i];
-    r += (1.00 - r) * 0.78 * warm; g += (0.94 - g) * 0.64 * warm; b += (0.85 - b) * 0.40 * warm;
-    r = r * (1.0 - 0.08 * midBlue - 0.16 * outerCool) + 0.10 * midBlue + 0.04 * outerCool;
-    g = g * (1.0 - 0.03 * midBlue) + 0.18 * midBlue + 0.07 * outerCool;
-    b = b * (1.0 + 0.10 * midBlue + 0.18 * outerCool) + 0.20 * midBlue + 0.12 * outerCool;
-    r *= 0.94 + 0.14 * armGlow; g *= 0.96 + 0.18 * armGlow; b *= 1.00 + 0.30 * armGlow;
-    const dustMul = 1.0 - dust * 0.72 * state.dustLaneIntensity;
-    return [r * dustMul * (1.0 - 0.08 * outerCool), g * dustMul * (0.98 + 0.03 * midBlue), b * dustMul * (0.98 + 0.08 * midBlue + 0.10 * outerCool)];
-}
-
-function applyTraditionalGalaxyColor(i, baseColor) {
-    let [r, g, b] = baseColor;
-    const coreLift = 1.0 + 0.42 * galaxyWarmCore[i];
-    const armLift  = 1.0 + 0.10 * galaxyArmGlow[i];
-    const dustMul  = 1.0 - galaxyDustWeight[i] * 0.72 * state.dustLaneIntensity;
-    const brightness = coreLift * armLift * dustMul;
-    return [Math.min(1.6, r * brightness), Math.min(1.6, g * brightness), Math.min(1.6, b * brightness)];
-}
-
-function stylizeGalaxyColor(i, baseColor) {
-    return state.colorMapDistributionMode === 'traditional'
-        ? applyTraditionalGalaxyColor(i, baseColor)
-        : applyMixedGalaxyColor(i, baseColor);
-}
-
+// #5: replaces per-particle CPU color write with LUT texture update + mode uniform sync.
+// Alpha and size still computed on CPU since they depend on per-particle fields, not the colormap.
 export function rebuildGalaxyColors(stops) {
+    // Update LUT uniforms (GPU samples these each vertex)
+    updateLutTexture(_lutTexA, stops);
+    updateLutTexture(_lutTexB, stops);
+    _lastLutA = -1; _lastLutB = -1; // force re-upload on next setColormapLut call
+    galaxyMat.uniforms.uLutMix.value      = 0;
+    galaxyMat.uniforms.uLutReverse.value  = state.reverseColorMap ? 1.0 : 0.0;
+    galaxyMat.uniforms.uDustIntensity.value = state.dustLaneIntensity;
+    galaxyMat.uniforms.uTraditional.value = state.colorMapDistributionMode === 'traditional' ? 1.0 : 0.0;
+    // Alpha and size: still per-particle, upload to GPU
     for (let i = 0; i < N_GALAXY; i++) {
-        const c = sampleColormap(stops, getGalaxyColorT(i));
-        const [r, g, b] = stylizeGalaxyColor(i, c);
-        galaxyColorsBuf[i*3] = r; galaxyColorsBuf[i*3+1] = g; galaxyColorsBuf[i*3+2] = b;
-        const rNorm = galaxyNormR[i], armGlow = galaxyArmGlow[i], warm = galaxyWarmCore[i];
         galaxyAlphasBuf[i] = galaxyAlphaScale[i];
+        const rNorm = galaxyNormR[i], armGlow = galaxyArmGlow[i], warm = galaxyWarmCore[i];
         galaxySizesBuf[i] = Math.max(0.004, Math.min(0.125,
             (0.010 + 0.010 * (1.0 - rNorm) + 0.006 * armGlow + 0.010 * warm) * galaxySizeScale[i]
         ));
@@ -149,7 +215,10 @@ export function rebuildGalaxyColors(stops) {
 
 export function refreshCurrentGalaxyColors() {
     rebuildGalaxyColors(getCurrentColorStops());
-    galaxyGeo.attributes.aColor.needsUpdate = true;
+    // LUT and mode uniforms updated inside rebuildGalaxyColors; mark per-particle arrays dirty
+    ['aNormR','aWarmCore','aArmGlow','aDust','aMidBlue','aOuterCool','aAlpha','aSize'].forEach(a => {
+        if (galaxyGeo.attributes[a]) galaxyGeo.attributes[a].needsUpdate = true;
+    });
 }
 
 export function updateGalaxyDrawRange() {
@@ -188,15 +257,55 @@ function initGalaxyPass1() {
     state.maxGalaxyRxy = maxR;
 }
 
+// ── Galaxy type morph (#4) ──
+let _morphState  = 'idle';   // 'fadeout' | 'fadein' | 'idle'
+let _morphT      = 0;
+let _pendingArgs = null;
+let _builtOnce   = false;
+const MORPH_OUT_DUR = 0.28;
+const MORPH_IN_DUR  = 0.48;
+
+// Steps the fade transition — called from animate() each frame
+export function updateGalaxyMorph(dt) {
+    if (_morphState === 'idle') return;
+    if (_morphState === 'fadeout') {
+        _morphT += dt / MORPH_OUT_DUR;
+        galaxyMat.uniforms.uMorphFade.value = Math.max(0, 1 - _morphT);
+        if (_morphT >= 1) {
+            _buildGalaxyNow(..._pendingArgs);
+            _pendingArgs = null;
+            _morphState  = 'fadein';
+            _morphT      = 0;
+        }
+    } else if (_morphState === 'fadein') {
+        _morphT += dt / MORPH_IN_DUR;
+        galaxyMat.uniforms.uMorphFade.value = Math.min(1, _morphT);
+        if (_morphT >= 1) { galaxyMat.uniforms.uMorphFade.value = 1.0; _morphState = 'idle'; }
+    }
+}
+
 // ── Full galaxy rebuild ──
+// Public entry point: immediate on first call, smooth morph on subsequent calls (#4)
 export function buildGalaxy(armCount, armTwist, typeKey) {
+    if (!_builtOnce) {
+        _buildGalaxyNow(armCount, armTwist, typeKey);
+        _builtOnce = true;
+        return;
+    }
+    // Subsequent type changes → fade-out → rebuild → fade-in
+    _pendingArgs = [armCount, armTwist, typeKey];
+    _morphState  = 'fadeout';
+    _morphT      = 0;
+}
+
+function _buildGalaxyNow(armCount, armTwist, typeKey) {
     initGalaxyPass1();
     const type = typeKey || 'barred';
 
     function finalize() {
-        ['position','aColor','aAlpha','aSize'].forEach(a => { if (galaxyGeo.attributes[a]) galaxyGeo.attributes[a].needsUpdate = true; });
+        ['position','aNormR','aWarmCore','aArmGlow','aDust','aMidBlue','aOuterCool','aAlpha','aSize']
+            .forEach(a => { if (galaxyGeo.attributes[a]) galaxyGeo.attributes[a].needsUpdate = true; });
         rebuildGalaxyColors(getCurrentColorStops());
-        ['aColor','aAlpha','aSize'].forEach(a => { if (galaxyGeo.attributes[a]) galaxyGeo.attributes[a].needsUpdate = true; });
     }
 
     if (type === 'elliptical') {
@@ -559,7 +668,11 @@ export function rotateGalaxyParticles(rotSpeed) {
     }
     state.maxGalaxyRxy = fmx;
     rebuildGalaxyColors(getCurrentColorStops());
+    // Mark all per-particle GPU attributes dirty for first upload
+    ['position','aNormR','aWarmCore','aArmGlow','aDust','aMidBlue','aOuterCool','aAlpha','aSize']
+        .forEach(a => { if (galaxyGeo.attributes[a]) galaxyGeo.attributes[a].needsUpdate = true; });
     galaxyGeo.setDrawRange(0, state.activeGalaxyCount);
+    _builtOnce = true;
 
     // Central sphere
     const sphereGeo = new THREE.SphereGeometry(0.09, 24, 24);

@@ -3,9 +3,10 @@ import { BLOOM_LAYER, CINEMA_PATHS, CAM_LERP_DUR, CORE_CENTER_BLOOM_REDUCTION, B
 import { state } from './state.js';
 import { camera, controls, bloomComposer, finalComposer, bloomPass } from './renderer.js';
 import {
-    galaxyGeo, galaxyMat, galaxyColorsBuf, galaxyRxy, galaxyTheta,
+    galaxyGeo, galaxyMat, galaxyRxy, galaxyTheta,
     getCurrentColorStops, getGalaxyColorT, rebuildGalaxyColors,
     rotateGalaxyParticles, centralSphere, sphereMat,
+    setColormapLut, updateGalaxyMorph,
 } from './galaxy.js';
 import { haloGeo, haloMat, nebulaGeo, nebulaMat, rotateHaloParticles, rotateNebulaParticles } from './nebula.js';
 import { starMat } from './stars.js';
@@ -19,8 +20,39 @@ import { captureFrame } from './capture.js';
 import './controls.js';
 
 // ── Animation loop ──
+// #8: When the tab is hidden during an export, requestAnimationFrame throttles to ~1 fps.
+// We switch to a MessageChannel loop (not subject to visibility throttling) so the
+// offscreen render + encode keeps running at full GPU speed.
+let _exportMC = null;
+
+function startExportMC() {
+    if (_exportMC) return;
+    _exportMC = new MessageChannel();
+    _exportMC.port2.onmessage = () => {
+        if (!state.isRecording || !document.hidden) { stopExportMC(); return; }
+        animateTick(performance.now());
+        _exportMC.port1.postMessage(null);
+    };
+    _exportMC.port1.postMessage(null);
+}
+function stopExportMC() {
+    if (!_exportMC) return;
+    _exportMC.port2.onmessage = null;
+    _exportMC = null;
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state.isRecording) startExportMC();
+    else stopExportMC();
+});
+
 function animate(now = performance.now()) {
     requestAnimationFrame(animate);
+    // When hidden and recording the MC loop drives animateTick — skip here to avoid double-render
+    if (document.hidden && state.isRecording) return;
+    animateTick(now);
+}
+
+function animateTick(now = performance.now()) {
     const dt = Math.min(0.05, Math.max(0.001, (now - state.lastFrameTime) / 1000));
     state.lastFrameTime = now;
 
@@ -151,7 +183,11 @@ function animate(now = performance.now()) {
         rotateNebulaParticles(rotSpeed);
     }
 
-    // ── Colormap auto-cycling ──
+    // ── Galaxy type morph tick (#4) ──
+    updateGalaxyMorph(dt);
+
+    // ── Colormap auto-cycling → GPU LUT update (#5) ──
+    // No per-particle CPU loop: just upload two 256-px LUT textures when the cmap changes.
     const cycleSpeed = 0.06 + lowAI * 0.30;
     if (state.lockedCmapIndex < 0) {
         state.cmapMix += 0.016 * cycleSpeed;
@@ -160,19 +196,7 @@ function animate(now = performance.now()) {
             state.cmapA = state.cmapB;
             state.cmapB = (state.cmapB + 1) % GALAXY_COLORMAPS.length;
         }
-        if (state.frameCount % 3 === 0) {
-            const stopsA = GALAXY_COLORMAPS[state.cmapA].stops;
-            const stopsB = GALAXY_COLORMAPS[state.cmapB].stops;
-            for (let i = 0; i < state.activeGalaxyCount; i++) {
-                const t  = getGalaxyColorT(i);
-                const cA = sampleColormap(stopsA, t);
-                const cB = sampleColormap(stopsB, t);
-                galaxyColorsBuf[i*3]   = cA[0] + (cB[0]-cA[0]) * state.cmapMix;
-                galaxyColorsBuf[i*3+1] = cA[1] + (cB[1]-cA[1]) * state.cmapMix;
-                galaxyColorsBuf[i*3+2] = cA[2] + (cB[2]-cA[2]) * state.cmapMix;
-            }
-            galaxyGeo.attributes.aColor.needsUpdate = true;
-        }
+        setColormapLut(state.cmapA, state.cmapB, state.cmapMix, state.reverseColorMap);
     }
 
     // ── Uniforms ──
@@ -191,17 +215,21 @@ function animate(now = performance.now()) {
     centralSphere.scale.setScalar(sScale / 0.09);
     sphereMat.opacity = Math.min(1.0, 0.32 + state.coreGlowIntensity * CORE_CENTER_BLOOM_REDUCTION * (0.38 + lowAI * 0.22));
 
-    // ── Beat detection ──
+    // ── Beat detection — spectral flux onset (#3) ──
+    // Compares energy change per FFT bin between consecutive frames (flux) rather than
+    // absolute low-freq level. Flux peaks sharply on transients and ignores sustained
+    // tones, so kick drums and snares trigger the flash/lightning far more precisely.
     let beatPulseThisFrame = false;
     if (state.isPlaying) {
-        state.beatHistory[state.beatHistoryIdx] = lowAI;
-        state.beatHistoryIdx = (state.beatHistoryIdx + 1) % BEAT_HISTORY;
-        const avgBeat = state.beatHistory.reduce((a, b) => a + b, 0) / BEAT_HISTORY;
         state.beatCooldown = Math.max(0, state.beatCooldown - 1);
-        if (lowAI > avgBeat * state.beatSensitivity && lowAI > 0.25 && state.beatCooldown === 0) {
+        const flux = state.spectralFlux;
+        // Adaptive median threshold over the rolling flux history
+        const sorted = [...state.spectralFluxHistory].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length * 0.5)];
+        if (flux > median * state.beatSensitivity && flux > 0.004 && state.beatCooldown === 0) {
             const flash = document.getElementById('beat-flash');
             flash.classList.remove('flash'); void flash.offsetWidth; flash.classList.add('flash');
-            state.beatCooldown = 14;
+            state.beatCooldown = 12;
             beatPulseThisFrame = true;
         }
     }

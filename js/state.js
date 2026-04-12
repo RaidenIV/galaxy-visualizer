@@ -62,6 +62,12 @@ export const state = {
     smoothedBloom:        1.0,
     smoothedBeamDrive:    0.0,
 
+    // Spectral flux for onset detection (#3)
+    spectralFlux:            0,
+    spectralFluxHistory:     new Array(BEAT_HISTORY).fill(0),
+    spectralFluxHistoryIdx:  0,
+    prevFreqBuf:             null,
+
     // Colormap
     lockedCmapIndex:         DEFAULT_CMAP_INDEX,
     cmapA:                   DEFAULT_CMAP_INDEX,
