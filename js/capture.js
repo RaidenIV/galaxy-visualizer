@@ -84,7 +84,7 @@ let renderProgressSub = null;
 let renderProgressCancelBtn = null;
 let exportEstimatedBytes = 0;
 let silentMonitorGain = null;
-let exportGainBeforeExport = 1;
+let exportTapGain = null;
 let liveGainWasConnectedBeforeExport = false;
 
 function ensureRenderProgressOverlay() {
@@ -249,12 +249,30 @@ function formatBytes(bytes) {
     return `${Math.round(safe)} B`;
 }
 
+function getResolutionScaleForPreset(preset) {
+    const basePixels = 1920 * 1080;
+    const pixels = Math.max(1, (preset?.width || 1920) * (preset?.height || 1080));
+    return pixels / basePixels;
+}
+
+function getConfiguredVideoBitrateMbps() {
+    return Math.max(1, parseInt(bitrateSelect?.value || '16', 10) || 16);
+}
+
+function getEffectiveVideoBitrateMbps(preset = getSelectedPreset()) {
+    return getConfiguredVideoBitrateMbps() * getResolutionScaleForPreset(preset);
+}
+
+function getEffectiveVideoBitrate(preset = getSelectedPreset()) {
+    return Math.round(getEffectiveVideoBitrateMbps(preset) * 1_000_000);
+}
+
 function getEstimatedExportBytes() {
     if (!state.audioElement?.duration) return 0;
     const preset = getSelectedPreset();
     const loopOnly = getLoopOnlyActive();
     const duration = Math.max(0, loopOnly ? (state.loopEnd - state.loopStart) : state.audioElement.duration);
-    const videoBitrateMbps = Math.max(1, parseInt(bitrateSelect?.value || '16', 10) || 16);
+    const videoBitrateMbps = getEffectiveVideoBitrateMbps(preset);
     const audioBitrateMbps = 0.192;
     const totalBits = duration * ((videoBitrateMbps + audioBitrateMbps) * 1_000_000) * 1.02;
     return totalBits / 8;
@@ -417,7 +435,7 @@ function pickAvcCodec() {
 }
 
 async function startAudioEncoding(sampleRate) {
-    if (!window.AudioEncoder || !state.audioContext || !state.gainNode) return false;
+    if (!window.AudioEncoder || !state.audioContext || !state.audioSource) return false;
     const cfg = { codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 };
     if (!(await AudioEncoder.isConfigSupported(cfg)).supported) return false;
 
@@ -428,6 +446,8 @@ async function startAudioEncoding(sampleRate) {
     });
     mp4Audio.configure(cfg);
 
+    exportTapGain = state.audioContext.createGain();
+    exportTapGain.gain.value = 1;
     scriptNode = state.audioContext.createScriptProcessor(4096, 2, 2);
     scriptNode.onaudioprocess = (e) => {
         if (!mp4Audio || mp4Audio.state === 'closed') return;
@@ -435,18 +455,16 @@ async function startAudioEncoding(sampleRate) {
         const n = input.length;
         const sr = input.sampleRate;
         const ch = Math.min(2, input.numberOfChannels || 2);
-        const data = new Float32Array(n * ch);
         const ch0 = input.getChannelData(0);
         const ch1 = ch > 1 ? input.getChannelData(1) : ch0;
-        for (let i = 0, j = 0; i < n; i++) {
-            data[j++] = ch0[i];
-            if (ch > 1) data[j++] = ch1[i];
-        }
+        const data = new Float32Array(n * 2);
+        data.set(ch0, 0);
+        data.set(ch1, n);
         const ad = new AudioData({
-            format: 'f32',
+            format: 'f32-planar',
             sampleRate: sr,
             numberOfFrames: n,
-            numberOfChannels: ch,
+            numberOfChannels: 2,
             timestamp: audioTsUs,
             data,
         });
@@ -456,7 +474,8 @@ async function startAudioEncoding(sampleRate) {
     };
     silentMonitorGain = state.audioContext.createGain();
     silentMonitorGain.gain.value = 0;
-    state.gainNode.connect(scriptNode);
+    state.audioSource.connect(exportTapGain);
+    exportTapGain.connect(scriptNode);
     scriptNode.connect(silentMonitorGain);
     silentMonitorGain.connect(state.audioContext.destination);
     return true;
@@ -467,6 +486,10 @@ function stopAudioEncoding() {
         try { scriptNode.disconnect(); } catch (_) {}
         scriptNode = null;
     }
+    if (exportTapGain) {
+        try { exportTapGain.disconnect(); } catch (_) {}
+        exportTapGain = null;
+    }
     if (silentMonitorGain) {
         try { silentMonitorGain.disconnect(); } catch (_) {}
         silentMonitorGain = null;
@@ -474,8 +497,6 @@ function stopAudioEncoding() {
 }
 
 function muteLiveAudioForExport() {
-    exportGainBeforeExport = state.gainNode ? state.gainNode.gain.value : 1;
-    if (state.gainNode) state.gainNode.gain.value = 0;
     liveGainWasConnectedBeforeExport = !!(state.gainNode && state.gainNodeConnected);
     if (state.gainNode && state.audioContext?.destination && state.gainNodeConnected) {
         try { state.gainNode.disconnect(state.audioContext.destination); } catch (_) {}
@@ -484,7 +505,6 @@ function muteLiveAudioForExport() {
 }
 
 function restoreLiveAudioAfterExport() {
-    if (state.gainNode) state.gainNode.gain.value = exportGainBeforeExport;
     if (state.gainNode && state.audioContext?.destination && liveGainWasConnectedBeforeExport && !state.gainNodeConnected) {
         try { state.gainNode.connect(state.audioContext.destination); state.gainNodeConnected = true; } catch (_) {}
     }
@@ -510,10 +530,20 @@ function syncRangeUI() {
 function syncFormatUI() {
     const preset = getSelectedPreset();
     const fps = getSelectedFps();
+    const configuredMbps = getConfiguredVideoBitrateMbps();
+    const effectiveMbps = getEffectiveVideoBitrateMbps(preset);
     if (formatValue) formatValue.textContent = preset.label;
-    if (bitrateValue && bitrateSelect) bitrateValue.textContent = `${bitrateSelect.value} Mbps`;
+    if (bitrateValue && bitrateSelect) {
+        bitrateValue.textContent = preset.height >= 2160
+            ? `${configuredMbps} Mbps base · ${effectiveMbps.toFixed(0)} Mbps effective`
+            : `${configuredMbps} Mbps`;
+    }
     if (fpsValue) fpsValue.textContent = `${fps} fps`;
-    if (captureNote) captureNote.textContent = `${preset.label} · ${fps} fps: Chrome/Edge · H.264 · auto-stops at end`;
+    if (captureNote) {
+        captureNote.textContent = preset.height >= 2160
+            ? `${preset.label} · ${fps} fps · H.264 · 4× pixel density bitrate scaling`
+            : `${preset.label} · ${fps} fps: Chrome/Edge · H.264 · auto-stops at end`;
+    }
     if (bitrateRow) bitrateRow.style.display = '';
     syncRangeUI();
 }
@@ -529,8 +559,8 @@ async function startMP4Export() {
     }
 
     const preset = getSelectedPreset();
-    const bitrateMbps = bitrateSelect ? parseInt(bitrateSelect.value, 10) : 16;
-    const bitrate = bitrateMbps * 1_000_000;
+    const bitrateMbps = getEffectiveVideoBitrateMbps(preset);
+    const bitrate = getEffectiveVideoBitrate(preset);
     const codec = pickAvcCodec();
     mp4FrameRate = getSelectedFps();
     mp4FrameDurationUs = Math.round(1_000_000 / mp4FrameRate);
@@ -564,7 +594,7 @@ async function startMP4Export() {
 
     const { Muxer, ArrayBufferTarget } = await loadMp4Muxer();
     const sampleRate = state.audioContext ? state.audioContext.sampleRate : 48000;
-    const aOk = window.AudioEncoder && state.gainNode &&
+    const aOk = window.AudioEncoder && state.audioSource &&
         (await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 })).supported;
 
     buildRecordingPipeline(preset.width, preset.height);
@@ -601,7 +631,7 @@ async function startMP4Export() {
     syncPlayButton(true);
 
     recordBtn.textContent = 'Cancel Export';
-    captureStatus.textContent = `Exporting ${loopOnly ? 'selected loop' : 'full audio'} as ${preset.label}…`;
+    captureStatus.textContent = `Exporting ${loopOnly ? 'selected loop' : 'full audio'} as ${preset.label} (${bitrateMbps.toFixed(0)} Mbps)…`;
 }
 
 async function stopMP4Export(cancelled = false) {
@@ -642,6 +672,7 @@ async function stopMP4Export(cancelled = false) {
     } finally {
         suspendAudioLoopEnforcement(false);
         restoreLiveAudioAfterExport();
+        mp4Audio = null;
         mp4Video = null;
         mp4Muxer = null;
         destroyRecordingPipeline();
