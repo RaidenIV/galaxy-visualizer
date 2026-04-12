@@ -824,10 +824,11 @@ export async function startPngSequenceExport() {
         return;
     }
 
-    // PNG sequence always renders at 1080p — 4K at full post-processing is typically
-    // 8-15 fps, yielding far fewer frames than expected. 1080p hits 25-60 fps on most GPUs.
-    const preset = EXPORT_PRESETS.mp4_1080;
-    mp4FrameRate  = getSelectedFps();
+    // Read settings from the PNG-sequence-specific controls
+    const pngFps = parseInt(pngSeqFpsSelect?.value || '60', 10);
+    const pngIs4k = pngSeqResSelect?.value === '4k';
+    const preset = pngIs4k ? EXPORT_PRESETS.mp4_4k : EXPORT_PRESETS.mp4_1080;
+    mp4FrameRate = pngFps;
     mp4FrameDurationUs = Math.round(1_000_000 / mp4FrameRate);
 
     const loopOnly = getLoopOnlyActive();
@@ -882,7 +883,7 @@ export async function startPngSequenceExport() {
     syncPlayButton(true);
 
     if (pngSeqBtn) pngSeqBtn.textContent = 'Cancel PNG Seq';
-    captureStatus.textContent = `Exporting PNG sequence — target ${targetFrames} frames at ${mp4FrameRate} fps (1080p)…`;
+    captureStatus.textContent = `Exporting PNG sequence — target ${targetFrames} frames at ${mp4FrameRate} fps (${preset.label.replace(' MP4','')})…`;
 }
 
 async function stopPngSequenceExport(cancelled = false) {
@@ -971,16 +972,67 @@ exportKindMp4?.addEventListener('change', () => setExportKind(exportKindMp4.chec
 exportKindPng?.addEventListener('change', () => setExportKind(exportKindPng.checked ? 'png' : 'mp4'));
 document.addEventListener('galaxy-loop-updated', syncRangeUI);
 
-// ── PNG Sequence button (#10) — inserted after the single-frame button ──
-let pngSeqBtn = document.getElementById('png-seq-btn');
+// ── PNG Sequence controls (#10) — fps + resolution selects + button ──
+// Injected dynamically after the single-frame button since we don't own the HTML.
+let pngSeqBtn       = document.getElementById('png-seq-btn');
+let pngSeqFpsSelect = document.getElementById('png-seq-fps-select');
+let pngSeqResSelect = document.getElementById('png-seq-res-select');
+
 if (!pngSeqBtn && frameBtn) {
+    const style = document.createElement('style');
+    style.textContent = `
+        .png-seq-controls {
+            display: flex; gap: 6px; align-items: center; margin: 5px 0;
+        }
+        .png-seq-select {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 8px;
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 10px 8px;
+            cursor: pointer;
+            flex: 1;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            text-align: center;
+        }
+        .png-seq-select:hover { border-color: rgba(255,255,255,0.28); }
+        .png-seq-select option { background: #111; }
+        #png-seq-btn { flex: 2; margin: 0 !important; }
+    `;
+    document.head.appendChild(style);
+
+    const row = document.createElement('div');
+    row.className = 'png-seq-controls';
+
+    pngSeqFpsSelect = document.createElement('select');
+    pngSeqFpsSelect.id        = 'png-seq-fps-select';
+    pngSeqFpsSelect.className = 'png-seq-select';
+    pngSeqFpsSelect.title     = 'Frame rate for PNG sequence';
+    pngSeqFpsSelect.innerHTML = '<option value="30">30 fps</option><option value="60" selected>60 fps</option>';
+
+    pngSeqResSelect = document.createElement('select');
+    pngSeqResSelect.id        = 'png-seq-res-select';
+    pngSeqResSelect.className = 'png-seq-select';
+    pngSeqResSelect.title     = 'Resolution for PNG sequence';
+    pngSeqResSelect.innerHTML = '<option value="1080" selected>1080p</option><option value="4k">4K</option>';
+
     pngSeqBtn = document.createElement('button');
-    pngSeqBtn.id        = 'png-seq-btn';
-    pngSeqBtn.className = 'primary';
+    pngSeqBtn.id          = 'png-seq-btn';
+    pngSeqBtn.className   = 'primary';
     pngSeqBtn.textContent = 'PNG Sequence';
-    pngSeqBtn.title = 'Export every frame as a PNG file (requires audio loaded)';
-    frameBtn.parentNode.insertBefore(pngSeqBtn, frameBtn.nextSibling);
+    pngSeqBtn.title       = 'Export every rendered frame as a PNG file';
+
+    row.appendChild(pngSeqFpsSelect);
+    row.appendChild(pngSeqResSelect);
+    row.appendChild(pngSeqBtn);
+    frameBtn.parentNode.insertBefore(row, frameBtn.nextSibling);
 }
+
 pngSeqBtn?.addEventListener('click', async () => {
     if (isPngSequence) { await stopPngSequenceExport(true); }
     else               { await startPngSequenceExport();    }
