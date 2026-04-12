@@ -76,18 +76,19 @@ export const starMat = new THREE.ShaderMaterial({
         varying   float vSpike;
         varying   float vGlow;
         void main() {
-            // Softer, slower twinkle so background flicker feels less busy
-            float twinkleTime = uTime * 0.5;
+            // Twinkle at the same pace, but trigger the stronger flicker about 50% less often
+            float twinkleTime = uTime;
             float baseTwinkle = 1.0
-                + 0.19 * sin(twinkleTime * 3.8  + aPhase)
-                + 0.10 * sin(twinkleTime * 11.3 + aPhase * 1.7)
-                + 0.05 * sin(twinkleTime * 24.7 + aPhase * 2.3);
+                + 0.14 * sin(twinkleTime * 3.8  + aPhase)
+                + 0.08 * sin(twinkleTime * 11.3 + aPhase * 1.7)
+                + 0.04 * sin(twinkleTime * 24.7 + aPhase * 2.3);
 
             float flickerRate   = 1.4 + 1.75 * fract(sin(aPhase * 12.9898) * 43758.5453);
             float flickerBucket = floor(twinkleTime * flickerRate + aPhase * 23.0);
             float randomFlicker = fract(sin(flickerBucket * 78.233 + aPhase * 37.719) * 43758.5453);
-            float flicker = mix(0.64, 1.55, randomFlicker);
-            float twinkle = baseTwinkle * mix(1.0, flicker, 0.44);
+            float flicker = mix(0.72, 1.42, randomFlicker);
+            float flickerGate = step(0.5, fract(sin(flickerBucket * 19.17 + aPhase * 4.73) * 43758.5453));
+            float twinkle = baseTwinkle * mix(1.0, flicker, 0.32 * flickerGate);
 
             vColor  = aColor;
             vBright = aBright * twinkle;

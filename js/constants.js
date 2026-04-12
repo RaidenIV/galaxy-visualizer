@@ -94,7 +94,10 @@ export const GALAXY_TYPES = {
     elliptical: { armCount: 0,  armTwist: 0.00, label: 'Elliptical'         },
     irregular:  { armCount: -1, armTwist: 0.50, label: 'Irregular'          },
     core:       { armCount: -1, armTwist: 0.50, label: 'Eye'                },
+    open:       { armCount: 2,  armTwist: 0.78, label: 'Open Spiral'        },
+    pinwheel:   { armCount: 3,  armTwist: 1.42, label: 'Pinwheel'           },
     polarring:  { armCount: -1, armTwist: 0.00, label: 'Polar Ring'         },
+    tight:      { armCount: 2,  armTwist: 2.25, label: 'Tight Spiral'       },
 };
 
 export const CAMERA_PRESETS = {

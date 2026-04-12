@@ -2,6 +2,11 @@ import { state } from './state.js';
 
 // ── Loop enforcement on the HTMLMediaElement ──
 let _loopCheckFn = null;
+let _loopSuspended = false;
+
+export function suspendAudioLoopEnforcement(suspended = true) {
+    _loopSuspended = !!suspended;
+}
 
 export function applyAudioLoop(loopStart, loopEnd) {
     state.loopEnabled = true;
@@ -17,7 +22,7 @@ export function applyAudioLoop(loopStart, loopEnd) {
     }
 
     _loopCheckFn = () => {
-        if (!state.loopEnabled) return;
+        if (!state.loopEnabled || _loopSuspended) return;
         if (state.audioElement.currentTime >= state.loopEnd - 0.08) {
             state.audioElement.currentTime = state.loopStart;
         }
@@ -29,6 +34,7 @@ export function applyAudioLoop(loopStart, loopEnd) {
         state.audioElement.currentTime >= loopEnd) {
         state.audioElement.currentTime = loopStart;
     }
+    document.dispatchEvent(new CustomEvent('galaxy-loop-updated'));
 }
 
 export function clearAudioLoop() {
@@ -45,6 +51,7 @@ export function clearAudioLoop() {
         loopBtn.textContent = 'Loop';
         loopBtn.classList.remove('loop-active');
     }
+    document.dispatchEvent(new CustomEvent('galaxy-loop-updated'));
 }
 
 // ── Audio analysis loop ──

@@ -63,91 +63,6 @@
                 </label>
             </div>
 
-            <!-- Galaxy Settings -->
-            <div class="cmap-section">
-                <div class="section-toggle-row" id="galaxy-toggle-row">
-                    <div class="section-title" style="margin:0;">Galaxy Settings</div>
-                    <span class="section-arrow" id="galaxy-arrow">▸</span>
-                </div>
-                <div class="section-body collapsed" id="galaxy-body">
-                    <div class="slider-container" style="margin-top:8px;">
-                        <div class="slider-label"><span>Reactivity</span><span class="slider-value" id="reactivity-value">100%</span></div>
-                        <input type="range" id="reactivity-slider" min="10" max="300" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Galaxy Stars</span><span class="slider-value" id="galaxy-stars-value">100%</span></div>
-                        <input type="range" id="galaxy-stars-slider" min="10" max="200" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Auto Rotate</span><span class="slider-value" id="auto-rotate-value">Off</span></div>
-                        <label class="toggle-control">
-                            <input type="checkbox" id="auto-rotate-toggle" class="toggle-input">
-                            <span class="toggle-switch"></span>
-                        </label>
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Auto Rotate Speed</span><span class="slider-value" id="auto-rotate-speed-value">20%</span></div>
-                        <input type="range" id="auto-rotate-speed-slider" min="5" max="250" value="20">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Galaxy Scale</span><span class="slider-value" id="galaxy-scale-value">100%</span></div>
-                        <input type="range" id="galaxy-scale-slider" min="25" max="200" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Core Size</span><span class="slider-value" id="galaxy-core-size-value">100%</span></div>
-                        <input type="range" id="galaxy-core-size-slider" min="50" max="400" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Galaxy Flatness</span><span class="slider-value" id="galaxy-flatness-value">100%</span></div>
-                        <input type="range" id="galaxy-flatness-slider" min="10" max="200" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Dust Lane Intensity</span><span class="slider-value" id="dust-intensity-value">100%</span></div>
-                        <input type="range" id="dust-intensity-slider" min="0" max="200" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Gas &amp; Nebula Density</span><span class="slider-value" id="gas-density-value">100%</span></div>
-                        <input type="range" id="gas-density-slider" min="0" max="250" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Disc Inclination</span><span class="slider-value" id="disc-inclination-value">0°</span></div>
-                        <input type="range" id="disc-inclination-slider" min="-90" max="90" value="0">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Field of View</span><span class="slider-value" id="fov-value">60°</span></div>
-                        <input type="range" id="fov-slider" min="30" max="100" value="60">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Beam Visibility Threshold</span><span class="slider-value" id="beam-threshold-value">80%</span></div>
-                        <input type="range" id="beam-threshold-slider" min="0" max="100" value="80">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Core Glow Intensity</span><span class="slider-value" id="core-glow-intensity-value">100%</span></div>
-                        <input type="range" id="core-glow-intensity-slider" min="0" max="250" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Core Glow Size</span><span class="slider-value" id="core-glow-size-value">50%</span></div>
-                        <input type="range" id="core-glow-size-slider" min="25" max="300" value="50">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Beam Thickness</span><span class="slider-value" id="beam-thickness-value">100%</span></div>
-                        <input type="range" id="beam-thickness-slider" min="25" max="300" value="100">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Beam Length</span><span class="slider-value" id="beam-length-value">150%</span></div>
-                        <input type="range" id="beam-length-slider" min="25" max="200" value="150">
-                    </div>
-                    <div class="slider-container">
-                        <div class="slider-label"><span>Performance Preset</span><span class="slider-value" id="performance-preset-value">Quality</span></div>
-                        <select id="performance-preset-select">
-                            <option value="quality" selected>Quality</option>
-                            <option value="balanced">Balanced</option>
-                            <option value="performance">Performance</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
             <!-- Galaxy Type -->
             <div class="cmap-section">
                 <div class="section-toggle-row" id="morph-toggle-row">
@@ -287,6 +202,91 @@
                 </div>
             </div>
 
+            <!-- Galaxy Settings -->
+            <div class="cmap-section">
+                <div class="section-toggle-row" id="galaxy-toggle-row">
+                    <div class="section-title" style="margin:0;">Galaxy Settings</div>
+                    <span class="section-arrow" id="galaxy-arrow">▸</span>
+                </div>
+                <div class="section-body collapsed" id="galaxy-body">
+                    <div class="slider-container" style="margin-top:8px;">
+                        <div class="slider-label"><span>Reactivity</span><span class="slider-value" id="reactivity-value">100%</span></div>
+                        <input type="range" id="reactivity-slider" min="10" max="300" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Galaxy Stars</span><span class="slider-value" id="galaxy-stars-value">100%</span></div>
+                        <input type="range" id="galaxy-stars-slider" min="10" max="200" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Auto Rotate</span><span class="slider-value" id="auto-rotate-value">Off</span></div>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="auto-rotate-toggle" class="toggle-input">
+                            <span class="toggle-switch"></span>
+                        </label>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Auto Rotate Speed</span><span class="slider-value" id="auto-rotate-speed-value">20%</span></div>
+                        <input type="range" id="auto-rotate-speed-slider" min="5" max="250" value="20">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Galaxy Scale</span><span class="slider-value" id="galaxy-scale-value">100%</span></div>
+                        <input type="range" id="galaxy-scale-slider" min="25" max="200" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Core Size</span><span class="slider-value" id="galaxy-core-size-value">100%</span></div>
+                        <input type="range" id="galaxy-core-size-slider" min="50" max="400" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Galaxy Flatness</span><span class="slider-value" id="galaxy-flatness-value">100%</span></div>
+                        <input type="range" id="galaxy-flatness-slider" min="10" max="200" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Dust Lane Intensity</span><span class="slider-value" id="dust-intensity-value">100%</span></div>
+                        <input type="range" id="dust-intensity-slider" min="0" max="200" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Gas &amp; Nebula Density</span><span class="slider-value" id="gas-density-value">100%</span></div>
+                        <input type="range" id="gas-density-slider" min="0" max="250" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Disc Inclination</span><span class="slider-value" id="disc-inclination-value">0°</span></div>
+                        <input type="range" id="disc-inclination-slider" min="-90" max="90" value="0">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Field of View</span><span class="slider-value" id="fov-value">60°</span></div>
+                        <input type="range" id="fov-slider" min="30" max="100" value="60">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Beam Visibility Threshold</span><span class="slider-value" id="beam-threshold-value">80%</span></div>
+                        <input type="range" id="beam-threshold-slider" min="0" max="100" value="80">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Core Glow Intensity</span><span class="slider-value" id="core-glow-intensity-value">100%</span></div>
+                        <input type="range" id="core-glow-intensity-slider" min="0" max="250" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Core Glow Size</span><span class="slider-value" id="core-glow-size-value">50%</span></div>
+                        <input type="range" id="core-glow-size-slider" min="25" max="300" value="50">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Beam Thickness</span><span class="slider-value" id="beam-thickness-value">100%</span></div>
+                        <input type="range" id="beam-thickness-slider" min="25" max="300" value="100">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Beam Length</span><span class="slider-value" id="beam-length-value">150%</span></div>
+                        <input type="range" id="beam-length-slider" min="25" max="200" value="150">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Performance Preset</span><span class="slider-value" id="performance-preset-value">Quality</span></div>
+                        <select id="performance-preset-select">
+                            <option value="quality" selected>Quality</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="performance">Performance</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
             <!-- Galaxy Color Map -->
             <div class="cmap-section">
                 <div class="section-toggle-row" id="cmap-toggle-row">
@@ -343,8 +343,8 @@
                     <div class="slider-container" style="margin-top:8px;">
                         <div class="slider-label"><span>Format</span><span class="slider-value" id="record-format-value">4K MP4</span></div>
                         <select id="record-format-select" class="capture-select">
-                            <option value="mp4" selected>4K MP4 (H.264)</option>
-                            <option value="webm">4K WebM (VP9) + Audio</option>
+                            <option value="mp4_4k" selected>4K MP4 (H.264)</option>
+                            <option value="mp4_1080">1080p MP4 (H.264)</option>
                         </select>
                     </div>
                     <div class="slider-container" id="record-bitrate-row">
@@ -355,13 +355,21 @@
                             <option value="50">50 Mbps — Ultra</option>
                         </select>
                     </div>
-                    <div class="mini-note" style="margin-bottom:8px;">All exports are 4K (3840 × 2160)</div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Range</span><span class="slider-value" id="record-range-value">Full Audio</span></div>
+                        <label class="capture-check-row" for="record-loop-only-toggle">
+                            <input type="checkbox" id="record-loop-only-toggle" class="capture-check-input">
+                            <span class="capture-check-box"></span>
+                            <span class="capture-check-text">Export selected loop only</span>
+                        </label>
+                    </div>
+                    <div class="mini-note" style="margin-bottom:8px;" id="capture-resolution-note">Exports the full track by default. If a loop is active, you can export only the selected loop.</div>
                     <div class="button-row">
-                        <button id="record-btn" class="secondary-btn">&#9679; Start Recording</button>
+                        <button id="record-btn" class="secondary-btn">Record</button>
                         <button id="frame-btn" class="secondary-btn">Save Frame 4K</button>
                     </div>
                     <div class="status-line" id="capture-status">Idle</div>
-                    <div class="mini-note" id="capture-note">4K MP4: Chrome/Edge · H.264</div>
+                    <div class="mini-note" id="capture-note">4K MP4: Chrome/Edge · H.264 · auto-stops at end</div>
                 </div>
             </div>
 

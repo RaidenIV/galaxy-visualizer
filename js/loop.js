@@ -38,6 +38,16 @@ export function openLoopPopup() {
     if (popupOpen || !state.audioFile) return;
     popupOpen = true;
 
+    if (state.audioElement) {
+        try { state.audioElement.pause(); } catch (_) {}
+    }
+    state.isPlaying = false;
+    const mainPlayBtn = document.getElementById('play-btn');
+    if (mainPlayBtn) {
+        mainPlayBtn.textContent = '▶ Play';
+        mainPlayBtn.className = 'play';
+    }
+
     const overlay = document.createElement('div');
     overlay.id = 'loop-modal-overlay';
     overlay.tabIndex = -1;
@@ -185,7 +195,7 @@ function wirePopupEvents(overlay) {
         state.detectedBpm = popupBpm;
         const btn = document.getElementById('loop-btn');
         if (btn) {
-            btn.textContent = 'Loop ✓';
+            btn.textContent = 'Loop';
             btn.classList.add('loop-active');
         }
         closePopup();

@@ -424,6 +424,9 @@ export function buildGalaxy(armCount, armTwist, typeKey) {
         grand:      { armStrength: 0.48, armPow: 5.0, bulgeFrac: 0.24, dustStr: 0.68, vertMul: 0.8,  hasBar: false, clumpMix: 0.02 },
         flocculent: { armStrength: 0.06, armPow: 0.5, bulgeFrac: 0.12, dustStr: 0.22, vertMul: 1.2,  hasBar: false, clumpMix: 0.90 },
         multiarm:   { armStrength: 0.18, armPow: 1.6, bulgeFrac: 0.15, dustStr: 0.35, vertMul: 1.05, hasBar: false, clumpMix: 0.55 },
+        open:       { armStrength: 0.24, armPow: 1.35, bulgeFrac: 0.15, dustStr: 0.30, vertMul: 1.10, hasBar: false, clumpMix: 0.24 },
+        pinwheel:   { armStrength: 0.34, armPow: 3.0,  bulgeFrac: 0.17, dustStr: 0.54, vertMul: 0.92, hasBar: false, clumpMix: 0.10 },
+        tight:      { armStrength: 0.42, armPow: 4.2,  bulgeFrac: 0.21, dustStr: 0.62, vertMul: 0.76, hasBar: false, clumpMix: 0.08 },
     };
     const tp = typeParams[type] || typeParams.barred;
     const nArms = Math.max(1, armCount);
