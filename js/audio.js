@@ -34,6 +34,9 @@ export function applyAudioLoop(loopStart, loopEnd) {
         state.audioElement.currentTime >= loopEnd) {
         state.audioElement.currentTime = loopStart;
     }
+
+    const loopOnlyToggle = document.getElementById('record-loop-only-toggle');
+    if (loopOnlyToggle) loopOnlyToggle.checked = true;
     document.dispatchEvent(new CustomEvent('galaxy-loop-updated'));
 }
 
@@ -51,6 +54,8 @@ export function clearAudioLoop() {
         loopBtn.textContent = 'Loop';
         loopBtn.classList.remove('loop-active');
     }
+    const loopOnlyToggle = document.getElementById('record-loop-only-toggle');
+    if (loopOnlyToggle) loopOnlyToggle.checked = false;
     document.dispatchEvent(new CustomEvent('galaxy-loop-updated'));
 }
 

@@ -341,10 +341,10 @@
                 </div>
                 <div class="section-body collapsed" id="capture-body">
                     <div class="slider-container" style="margin-top:8px;">
-                        <div class="slider-label"><span>Format</span><span class="slider-value" id="record-format-value">4K MP4</span></div>
+                        <div class="slider-label"><span>Format</span><span class="slider-value" id="record-format-value">1080p MP4</span></div>
                         <select id="record-format-select" class="capture-select">
-                            <option value="mp4_4k" selected>4K MP4 (H.264)</option>
-                            <option value="mp4_1080">1080p MP4 (H.264)</option>
+                            <option value="mp4_1080" selected>1080p MP4 (H.264)</option>
+                            <option value="mp4_4k">4K MP4 (H.264)</option>
                         </select>
                     </div>
                     <div class="slider-container" id="record-bitrate-row">
@@ -364,9 +364,23 @@
                         </label>
                     </div>
                     <div class="mini-note" style="margin-bottom:8px;" id="capture-resolution-note">Exports the full track by default. If a loop is active, you can export only the selected loop.</div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Frame Size</span><span class="slider-value" id="frame-size-value">1080p</span></div>
+                        <select id="frame-size-select" class="capture-select">
+                            <option value="1080" selected>1080p PNG</option>
+                            <option value="2160">4K PNG</option>
+                        </select>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Frame Orientation</span><span class="slider-value" id="frame-orientation-value">Landscape</span></div>
+                        <select id="frame-orientation-select" class="capture-select">
+                            <option value="landscape" selected>Landscape</option>
+                            <option value="portrait">Portrait</option>
+                        </select>
+                    </div>
                     <div class="button-row">
                         <button id="record-btn" class="secondary-btn">Record</button>
-                        <button id="frame-btn" class="secondary-btn">Save Frame 4K</button>
+                        <button id="frame-btn" class="secondary-btn">Save Frame</button>
                     </div>
                     <div class="status-line" id="capture-status">Idle</div>
                     <div class="mini-note" id="capture-note">4K MP4: Chrome/Edge · H.264 · auto-stops at end</div>

@@ -21,13 +21,22 @@ const bitrateValue = document.getElementById('record-bitrate-value');
 const rangeValue = document.getElementById('record-range-value');
 const captureNote = document.getElementById('capture-note');
 const resolutionNote = document.getElementById('capture-resolution-note');
+const frameSizeSelect = document.getElementById('frame-size-select');
+const frameSizeValue = document.getElementById('frame-size-value');
+const frameOrientationSelect = document.getElementById('frame-orientation-select');
+const frameOrientationValue = document.getElementById('frame-orientation-value');
 const playBtn = document.getElementById('play-btn');
 
 const EXPORT_PRESETS = {
     mp4_1080: { width: 1920, height: 1080, label: '1080p MP4' },
     mp4_4k: { width: 3840, height: 2160, label: '4K MP4' },
 };
-const FRAME_EXPORT = { width: 3840, height: 2160, label: '4K' };
+const FRAME_EXPORT_PRESETS = {
+    '1080_landscape': { width: 1920, height: 1080, label: '1080p Landscape' },
+    '1080_portrait': { width: 1080, height: 1920, label: '1080p Portrait' },
+    '2160_landscape': { width: 3840, height: 2160, label: '4K Landscape' },
+    '2160_portrait': { width: 2160, height: 3840, label: '4K Portrait' },
+};
 
 let recCanvas = null;
 let recRenderer = null;
@@ -127,12 +136,25 @@ function renderOffscreen() {
     camera.updateProjectionMatrix();
 }
 
+function getSelectedFramePreset() {
+    const sizeKey = frameSizeSelect?.value || '1080';
+    const orientationKey = frameOrientationSelect?.value || 'landscape';
+    return FRAME_EXPORT_PRESETS[`${sizeKey}_${orientationKey}`] || FRAME_EXPORT_PRESETS['1080_landscape'];
+}
+
+function syncFrameUI() {
+    const preset = getSelectedFramePreset();
+    if (frameSizeValue) frameSizeValue.textContent = preset.label.startsWith('4K') ? '4K' : '1080p';
+    if (frameOrientationValue) frameOrientationValue.textContent = preset.label.includes('Portrait') ? 'Portrait' : 'Landscape';
+}
+
 async function exportFrame() {
-    buildRecordingPipeline(FRAME_EXPORT.width, FRAME_EXPORT.height);
+    const preset = getSelectedFramePreset();
+    buildRecordingPipeline(preset.width, preset.height);
     try {
         renderOffscreen();
         await new Promise((resolve) => {
-            const name = `galaxy_frame_4K_${Date.now()}.png`;
+            const name = `galaxy_frame_${preset.label.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.png`;
             const finish = (blob) => {
                 if (!blob) {
                     const a = document.createElement('a');
@@ -396,10 +418,11 @@ recordBtn.addEventListener('click', async () => {
 });
 
 frameBtn.addEventListener('click', async () => {
-    captureStatus.textContent = 'Saving frame (4K)…';
+    const preset = getSelectedFramePreset();
+    captureStatus.textContent = `Saving frame (${preset.label})…`;
     try {
         await exportFrame();
-        captureStatus.textContent = 'Frame saved (4K).';
+        captureStatus.textContent = `Frame saved (${preset.label}).`;
     } catch (e) {
         captureStatus.textContent = 'Frame capture failed.';
     }
@@ -408,8 +431,11 @@ frameBtn.addEventListener('click', async () => {
 formatSelect?.addEventListener('change', syncFormatUI);
 bitrateSelect?.addEventListener('change', syncFormatUI);
 loopOnlyToggle?.addEventListener('change', syncRangeUI);
+frameSizeSelect?.addEventListener('change', syncFrameUI);
+frameOrientationSelect?.addEventListener('change', syncFrameUI);
 document.addEventListener('galaxy-loop-updated', syncRangeUI);
 syncFormatUI();
+syncFrameUI();
 
 (function () {
     const row = document.getElementById('capture-toggle-row');

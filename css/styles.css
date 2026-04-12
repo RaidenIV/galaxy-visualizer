@@ -257,8 +257,43 @@ button.secondary-btn:hover:not(:disabled) {
 
 /* ── Hidden states ── */
 #controls.hidden { display: none; }
+#controls.collapsed {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    padding-bottom: 14px;
+}
+#controls.collapsed .logo-top,
 #controls.collapsed .controls-content { display: none; }
-.visualizer-container { width: 100%; height: 100%; position: relative; overflow: hidden; }
+#controls.collapsed .header-container {
+    margin-bottom: 0;
+    min-height: 28px;
+}
+.visualizer-container {
+    width: 100%;
+    height: 100%;
+    min-width: 100vw;
+    min-height: 100vh;
+    position: relative;
+    overflow: hidden;
+}
+.visualizer-container:fullscreen,
+.visualizer-container:-webkit-full-screen,
+html:fullscreen,
+html:-webkit-full-screen {
+    width: 100vw;
+    height: 100vh;
+}
+html:fullscreen body,
+html:-webkit-full-screen body {
+    width: 100vw;
+    height: 100vh;
+}
+html:fullscreen #canvas,
+html:-webkit-full-screen #canvas {
+    width: 100vw !important;
+    height: 100vh !important;
+}
 
 /* ── Font enforcement ── */
 #controls, #controls * { font-family: 'Rajdhani', sans-serif !important; }

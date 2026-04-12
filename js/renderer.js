@@ -197,11 +197,14 @@ export function applyPerformancePreset(preset, galaxy) {
     if (galaxy) galaxy.applyPerformanceCounts();
 }
 
-// ── Window resize ──
-window.addEventListener('resize', () => {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+function syncViewportSize() {
+    const w = Math.max(1, window.innerWidth);
+    const h = Math.max(1, window.innerHeight);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     setRendererPixelRatioFromPreset();
-});
+}
+
+// ── Window resize / fullscreen sync ──
+window.addEventListener('resize', syncViewportSize);
+document.addEventListener('fullscreenchange', syncViewportSize);
