@@ -25,7 +25,7 @@ export function ensureAudioContext() {
     if (!state.analyser) {
         state.analyser = state.audioContext.createAnalyser();
         state.analyser.fftSize = 2048;
-        state.analyser.smoothingTimeConstant = 0.84;
+        state.analyser.smoothingTimeConstant = 0.72;
     }
     if (!state.gainNode) {
         state.gainNode = state.audioContext.createGain();
@@ -468,11 +468,11 @@ export function updateAudioAnalysis(dt = 1 / 60) {
     mid /= Math.max(1, (midEnd - lowEnd) * 255);
     high /= Math.max(1, (highEnd - midEnd) * 255);
 
-    const influenceRaw = clamp((low * 0.58 + mid * 0.30 + high * 0.12) * state.reactivityMultiplier, 0, 1.4);
-    state.currentLowFreq = lerp(state.currentLowFreq, low, 0.24);
-    state.currentMidFreq = lerp(state.currentMidFreq, mid, 0.18);
-    state.currentHighFreq = lerp(state.currentHighFreq, high, 0.16);
-    state.currentAudioInfluence = lerp(state.currentAudioInfluence, influenceRaw, 0.18);
+    const influenceRaw = clamp((low * 0.68 + mid * 0.24 + high * 0.08) * state.reactivityMultiplier, 0, 1.4);
+    state.currentLowFreq = lerp(state.currentLowFreq, low, 0.34);
+    state.currentMidFreq = lerp(state.currentMidFreq, mid, 0.24);
+    state.currentHighFreq = lerp(state.currentHighFreq, high, 0.20);
+    state.currentAudioInfluence = lerp(state.currentAudioInfluence, influenceRaw, 0.24);
 
     const energy = low * 1.15 + mid * 0.55 + high * 0.35;
     const history = state.beatHistory;
@@ -485,9 +485,16 @@ export function updateAudioAnalysis(dt = 1 / 60) {
     if (beat) state.beatCooldown = 0.14;
 
     const beatBoost = beat ? clamp((energy - avg) * 1.8, 0, 1) : 0;
-    state.smoothedBloom = lerp(state.smoothedBloom, 1.0 + low * 0.45 + beatBoost * 0.35, 0.12);
-    state.smoothedBeamDrive = lerp(state.smoothedBeamDrive, high * 0.9 + beatBoost * 0.4, 0.14);
-    state.lightningGlowDrive = lerp(state.lightningGlowDrive, high * 0.8 + beatBoost * 0.6, 0.16);
+
+    // Restore a punchier, bass-led feel closer to the earlier visualizer behavior.
+    const beamTarget = clamp((low * state.reactivityMultiplier - 0.12) / 0.88, 0, 1);
+    const beamLerp = beamTarget > state.smoothedBeamDrive ? 0.22 : 0.10;
+    state.smoothedBeamDrive += (beamTarget - state.smoothedBeamDrive) * beamLerp;
+
+    const bloomTarget = 0.95 + low * 0.62 + beatBoost * 0.42;
+    state.smoothedBloom = lerp(state.smoothedBloom, bloomTarget, 0.14);
+
+    state.lightningGlowDrive = lerp(state.lightningGlowDrive, high * 0.82 + beatBoost * 0.72, 0.20);
 
     state.audioPeak = Math.max(low, mid, high);
     state.audioBeat = beat;

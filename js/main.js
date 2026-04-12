@@ -62,6 +62,9 @@ function animate(now = performance.now()) {
     const midAI = state.isPlaying ? Math.min(1, state.currentMidFreq  * state.reactivityMultiplier) : 0.0;
     const highAI= state.isPlaying ? Math.min(1, state.currentHighFreq * state.reactivityMultiplier) : 0.0;
 
+    // Restore the earlier punchier beam behavior: drive the scatter from bass response
+    // with a faster attack than release. This keeps the BPM/loop audio path intact, but
+    // brings back the stronger low-end visual hits.
     const beamDriveTarget = state.isPlaying ? Math.max(0, Math.min(1, (lowAI - 0.12) / 0.88)) : 0.0;
     const beamDriveLerp   = beamDriveTarget > state.smoothedBeamDrive ? 0.22 : 0.10;
     state.smoothedBeamDrive += (beamDriveTarget - state.smoothedBeamDrive) * beamDriveLerp;
@@ -131,7 +134,8 @@ function animate(now = performance.now()) {
     controls.update();
 
     // ── Galaxy rotation ──
-    // Always rotate — ai/midAI already fall back to gentle idle values when paused.
+    // Always rotate — ai/midAI already fall back to gentle idle values when paused,
+    // so no need to gate on isPlaying. This also prevents the freeze on audio load.
     {
         const rotAI    = Math.min(1, ai + midAI * state.midRotationWeight);
         const rotSpeed = 0.05 * rotAI * dt * 60 * 0.5;
@@ -181,18 +185,12 @@ function animate(now = performance.now()) {
     sphereMat.opacity = Math.min(1.0, 0.32 + state.coreGlowIntensity * CORE_CENTER_BLOOM_REDUCTION * (0.38 + lowAI * 0.22));
 
     // ── Beat detection ──
-    let beatPulseThisFrame = false;
-    if (state.isPlaying) {
-        state.beatHistory[state.beatHistoryIdx] = lowAI;
-        state.beatHistoryIdx = (state.beatHistoryIdx + 1) % BEAT_HISTORY;
-        const avgBeat = state.beatHistory.reduce((a, b) => a + b, 0) / BEAT_HISTORY;
-        state.beatCooldown = Math.max(0, state.beatCooldown - 1);
-        if (lowAI > avgBeat * state.beatSensitivity && lowAI > 0.25 && state.beatCooldown === 0) {
-            const flash = document.getElementById('beat-flash');
-            flash.classList.remove('flash'); void flash.offsetWidth; flash.classList.add('flash');
-            state.beatCooldown = 14;
-            beatPulseThisFrame = true;
-        }
+    // audio.js owns beatHistory/beatCooldown — read state.audioBeat directly to avoid
+    // double-advancing the ring buffer (which was halving beat detection sensitivity).
+    const beatPulseThisFrame = state.isPlaying && !!state.audioBeat;
+    if (beatPulseThisFrame) {
+        const flash = document.getElementById('beat-flash');
+        flash.classList.remove('flash'); void flash.offsetWidth; flash.classList.add('flash');
     }
 
     // ── Lightning ──
@@ -203,13 +201,13 @@ function animate(now = performance.now()) {
     else hideLightning();
 
     // ── Bloom ──
+    // audio.js already lerped state.smoothedBloom this frame; use it directly.
+    // We still factor in core glow and lightning since those are driven here.
     const bloomAI = Math.min(1, ai * state.bassBloomWeight);
-    const bloomTarget = 0.9 + bloomAI * state.reactivityMultiplier * 1.8
+    const bloomBoost = bloomAI * state.reactivityMultiplier * 1.8
         + state.lightningGlowDrive * state.lightningBloomBoost * 0.68
         + state.coreGlowIntensity * CORE_CENTER_BLOOM_REDUCTION * (0.22 + lowAI * 0.18);
-    state.smoothedBloom += (bloomTarget - state.smoothedBloom) * 0.08;
-    state.lightningGlowDrive *= 0.82;
-    bloomPass.strength = state.smoothedBloom;
+    bloomPass.strength = state.smoothedBloom + bloomBoost * 0.5;
 
     // ── Render ──
     camera.layers.set(BLOOM_LAYER);
