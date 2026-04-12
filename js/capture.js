@@ -233,47 +233,6 @@ function showRenderProgressOverlay(preset, range) {
     updateRenderProgressOverlay(0, range.start, range.end, 'Starting export…');
     document.body.classList.add('export-in-progress');
     renderProgressOverlay.classList.add('show');
-
-    // #6: Draw audio waveform as the progress-bar background
-    const trackEl = renderProgressOverlay.querySelector('.render-progress-track');
-    if (trackEl) drawWaveformBackground(trackEl, range.start, range.end);
-}
-
-// Decodes the loaded audio file and paints a waveform into the track element background (#6)
-async function drawWaveformBackground(trackEl, rangeStart, rangeEnd) {
-    if (!state.audioFile || !state.audioContext) return;
-    try {
-        const ab = await state.audioFile.arrayBuffer();
-        // Decode a separate copy — doesn't disturb the live AudioContext graph
-        const tmpCtx = new OfflineAudioContext(1, 1, state.audioContext.sampleRate);
-        const audioBuffer = await tmpCtx.decodeAudioData(ab);
-        const ch = audioBuffer.getChannelData(0);
-        const totalSec = audioBuffer.duration;
-        const s0 = Math.floor((rangeStart / totalSec) * ch.length);
-        const s1 = Math.floor((rangeEnd   / totalSec) * ch.length);
-        const span = Math.max(1, s1 - s0);
-
-        const W = 300, H = 10;
-        const cv = document.createElement('canvas');
-        cv.width = W; cv.height = H;
-        const ctx = cv.getContext('2d');
-        ctx.clearRect(0, 0, W, H);
-
-        for (let x = 0; x < W; x++) {
-            const si = s0 + Math.floor(x * span / W);
-            const ei = Math.min(ch.length, si + Math.max(1, Math.floor(span / W)));
-            let peak = 0;
-            for (let s = si; s < ei; s++) { const v = Math.abs(ch[s]); if (v > peak) peak = v; }
-            const barH = Math.max(1, Math.round(peak * H));
-            const alpha = 0.18 + peak * 0.45;
-            ctx.fillStyle = `rgba(91,143,255,${alpha.toFixed(2)})`;
-            ctx.fillRect(x, Math.round((H - barH) / 2), 1, barH);
-        }
-
-        trackEl.style.backgroundImage  = `url(${cv.toDataURL()})`;
-        trackEl.style.backgroundSize   = '100% 100%';
-        trackEl.style.backgroundRepeat = 'no-repeat';
-    } catch (_) { /* silently skip if decode fails */ }
 }
 
 function updateRenderProgressOverlay(progress, currentTime, endTime, subText = '') {
@@ -766,28 +725,28 @@ export function captureFrame(now) {
     renderOffscreen();
 
     // ── PNG sequence frame capture (#10) ──
+    // No wall-clock gate: capture every animate() call. The gate can never produce
+    // frames faster than the GPU renders them, so gating at e.g. 60 fps when the GPU
+    // delivers 10 fps just gives 10 fps worth of frames anyway. Without the gate we
+    // capture everything the GPU produces and the sequence covers the full audio range.
     if (isPngSequence) {
-        if (mp4StartTime === null) { mp4StartTime = now; mp4NextFrameDueMs = now; }
-        if (now >= mp4NextFrameDueMs) {
-            const frameNum = pngFrameCount.toString().padStart(6, '0');
-            const name = `frame_${frameNum}.png`;
-            pngPendingWrites++;
-            recCanvas.toBlob(async (blob) => {
-                try {
-                    if (pngDirHandle) {
-                        const fh = await pngDirHandle.getFileHandle(name, { create: true });
-                        const wr = await fh.createWritable();
-                        await wr.write(blob);
-                        await wr.close();
-                    } else {
-                        const data = new Uint8Array(await blob.arrayBuffer());
-                        pngFrames.push({ name, data });
-                    }
-                } catch (_) {} finally { pngPendingWrites--; }
-            }, 'image/png');
-            pngFrameCount++;
-            mp4NextFrameDueMs += 1000 / mp4FrameRate;
-        }
+        const frameNum = pngFrameCount.toString().padStart(6, '0');
+        const name = `frame_${frameNum}.png`;
+        pngPendingWrites++;
+        recCanvas.toBlob(async (blob) => {
+            try {
+                if (pngDirHandle) {
+                    const fh = await pngDirHandle.getFileHandle(name, { create: true });
+                    const wr = await fh.createWritable();
+                    await wr.write(blob);
+                    await wr.close();
+                } else {
+                    const data = new Uint8Array(await blob.arrayBuffer());
+                    pngFrames.push({ name, data });
+                }
+            } catch (_) {} finally { pngPendingWrites--; }
+        }, 'image/png');
+        pngFrameCount++;
 
         if (exportRange && state.audioElement) {
             const t = Math.max(exportRange.start, Math.min(exportRange.end, state.audioElement.currentTime));
@@ -865,7 +824,9 @@ export async function startPngSequenceExport() {
         return;
     }
 
-    const preset  = getSelectedPreset();
+    // PNG sequence always renders at 1080p — 4K at full post-processing is typically
+    // 8-15 fps, yielding far fewer frames than expected. 1080p hits 25-60 fps on most GPUs.
+    const preset = EXPORT_PRESETS.mp4_1080;
     mp4FrameRate  = getSelectedFps();
     mp4FrameDurationUs = Math.round(1_000_000 / mp4FrameRate);
 
@@ -875,7 +836,9 @@ export async function startPngSequenceExport() {
         start: loopOnly ? state.loopStart : 0,
         end:   loopOnly ? state.loopEnd   : state.audioElement.duration,
     };
-    const totalFrames = Math.ceil((exportRange.end - exportRange.start) * mp4FrameRate);
+    const duration     = exportRange.end - exportRange.start;
+    // Target frame count is informational only — actual count depends on GPU render speed
+    const targetFrames = Math.ceil(duration * mp4FrameRate);
 
     // Try File System Access API first (Chrome/Edge 86+)
     pngDirHandle = null;
@@ -884,30 +847,30 @@ export async function startPngSequenceExport() {
             pngDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
         } catch (e) {
             if (e.name === 'AbortError') return;
-            pngDirHandle = null; // fall back to in-memory zip
+            pngDirHandle = null;
         }
     }
 
-    if (!pngDirHandle && totalFrames > 1800) {
-        // Warn: ~1800 frames × ~3 MB = ~5.4 GB uncompressed PNG in RAM
-        const ok = confirm(`PNG sequence will produce ${totalFrames} frames (~${Math.round(totalFrames * 3 / 1024)} GB uncompressed). Consider using File System Access or a shorter range. Continue?`);
+    if (!pngDirHandle && targetFrames > 1800) {
+        const ok = confirm(`PNG sequence may produce up to ${targetFrames} frames in memory. Consider using File System Access (allow folder picker) for unlimited length. Continue?`);
         if (!ok) return;
     }
 
-    exportEstimatedBytes = totalFrames * preset.width * preset.height * 3; // rough uncompressed estimate
-    pngFrames       = [];
-    pngFrameCount   = 0;
+    exportEstimatedBytes = targetFrames * preset.width * preset.height * 3;
+    pngFrames        = [];
+    pngFrameCount    = 0;
     pngPendingWrites = 0;
-    isPngSequence   = true;
+    isPngSequence    = true;
     state.isRecording = true;
-    stopRequested   = false;
-    exportCancelled = false;
+    stopRequested    = false;
+    exportCancelled  = false;
 
     buildRecordingPipeline(preset.width, preset.height);
-    showPngProgressOverlay(preset, exportRange, totalFrames);
+    showPngProgressOverlay(preset, exportRange, targetFrames);
 
-    mp4StartTime      = null;
-    mp4NextFrameDueMs = null;
+    // No wall-clock state needed — PNG sequence captures every animate() call
+    mp4StartTime       = null;
+    mp4NextFrameDueMs  = null;
     mp4LastTimestampUs = -1;
 
     muteLiveAudioForExport();
@@ -919,7 +882,7 @@ export async function startPngSequenceExport() {
     syncPlayButton(true);
 
     if (pngSeqBtn) pngSeqBtn.textContent = 'Cancel PNG Seq';
-    captureStatus.textContent = `Exporting PNG sequence (${totalFrames} frames)…`;
+    captureStatus.textContent = `Exporting PNG sequence — target ${targetFrames} frames at ${mp4FrameRate} fps (1080p)…`;
 }
 
 async function stopPngSequenceExport(cancelled = false) {
@@ -977,8 +940,6 @@ function showPngProgressOverlay(preset, range, totalFrames) {
     updateRenderProgressOverlay(0, range.start, range.end, 'Starting export…');
     document.body.classList.add('export-in-progress');
     renderProgressOverlay.classList.add('show');
-    const trackEl = renderProgressOverlay.querySelector('.render-progress-track');
-    if (trackEl) drawWaveformBackground(trackEl, range.start, range.end);
 }
 
 recordBtn.addEventListener('click', async () => {
