@@ -55,6 +55,7 @@ let recRenderer = null;
 let recBloomComposer = null;
 let recFinalComposer = null;
 let recBloomPass = null;
+let recFinalPass = null;   // kept so renderOffscreen can update its bloomTexture uniform each frame
 let recWidth = EXPORT_PRESETS.mp4_4k.width;
 let recHeight = EXPORT_PRESETS.mp4_4k.height;
 
@@ -64,11 +65,8 @@ let mp4Audio = null;
 let scriptNode = null;
 let audioTsUs = 0;
 let mp4FrameCount = 0;
-let mp4StartTime = null;
-let mp4LastTime = null;
 let mp4FrameRate = 60;
 let mp4FrameDurationUs = Math.round(1_000_000 / 60);
-let mp4NextFrameDueMs = null;
 let stopRequested = false;
 let exportRange = null;
 let exportCancelled = false;
@@ -351,9 +349,10 @@ function buildRecordingPipeline(width, height) {
         fragmentShader: `uniform sampler2D baseTexture; uniform sampler2D bloomTexture; varying vec2 vUv; void main() { gl_FragColor = texture2D(baseTexture,vUv) + texture2D(bloomTexture,vUv); }`,
         transparent: true,
     });
+    recFinalPass = new ShaderPass(finalMat, 'baseTexture');
     recFinalComposer = new EffectComposer(recRenderer);
     recFinalComposer.addPass(new RenderPass(scene, camera));
-    recFinalComposer.addPass(new ShaderPass(finalMat, 'baseTexture'));
+    recFinalComposer.addPass(recFinalPass);
 }
 
 function destroyRecordingPipeline() {
@@ -364,6 +363,7 @@ function destroyRecordingPipeline() {
     recBloomComposer = null;
     recFinalComposer = null;
     recBloomPass = null;
+    recFinalPass = null;
 }
 
 function renderOffscreen() {
@@ -378,8 +378,24 @@ function renderOffscreen() {
 
     camera.layers.set(BLOOM_LAYER);
     recBloomComposer.render();
+
+    // ── Fix 1: refresh bloom texture reference each frame.
+    // EffectComposer ping-pongs between renderTarget1/2 on every pass; the texture
+    // that holds the bloom result can flip between renders. Reading it fresh from
+    // readBuffer after the bloom composer finishes guarantees we sample the correct
+    // frame instead of the previous one (which caused ghosting / doubled-frame artifacts).
+    if (recFinalPass?.material?.uniforms?.bloomTexture) {
+        recFinalPass.material.uniforms.bloomTexture.value = recBloomComposer.readBuffer.texture;
+    }
+
     camera.layers.set(0);
     recFinalComposer.render();
+
+    // ── Fix 2: GPU sync before VideoFrame pixel readback.
+    // WebGL command submission is asynchronous — without gl.finish() the GPU may
+    // still be executing the last draw calls when VideoFrame(canvas) snapshots the
+    // framebuffer, producing partial / torn frames in the encoded MP4.
+    recRenderer.getContext().finish();
 
     camera.aspect = savedAspect;
     camera.updateProjectionMatrix();
@@ -617,9 +633,6 @@ async function startMP4Export() {
     if (aOk) await startAudioEncoding(sampleRate);
 
     mp4FrameCount = 0;
-    mp4StartTime = null;
-    mp4LastTime = null;
-    mp4NextFrameDueMs = null;
     isMP4Recording = true;
     state.isRecording = true;
 
@@ -688,26 +701,23 @@ export function captureFrame(now) {
     renderOffscreen();
 
     if (isMP4Recording && mp4Video && mp4Video.encodeQueueSize <= 15) {
-        if (mp4StartTime === null) {
-            mp4StartTime = now;
-            mp4LastTime = now;
-            mp4NextFrameDueMs = now;
+        // ── Fix 3: use strictly sequential per-frame timestamps.
+        // The previous wall-clock approach advanced mp4NextFrameDueMs with a do-while
+        // loop to "catch up" when 4K frames took longer than 1000/fps ms. This silently
+        // skipped multiple frame-worth of PTS values, creating timestamp gaps that
+        // decoders render as screen tears or duplicate frames. Every animate() call
+        // during recording now produces exactly one encoded frame at the next
+        // sequential timestamp, keeping video and audio PTSes aligned.
+        const timestampUs = mp4FrameCount * mp4FrameDurationUs;
+        let frame;
+        try {
+            frame = new VideoFrame(recCanvas, { timestamp: timestampUs, duration: mp4FrameDurationUs });
+        } catch (_) {
+            return;
         }
-        if (mp4NextFrameDueMs !== null && now + 0.25 >= mp4NextFrameDueMs) {
-            const timestampUs = mp4FrameCount * mp4FrameDurationUs;
-            let frame;
-            try {
-                frame = new VideoFrame(recCanvas, { timestamp: timestampUs, duration: mp4FrameDurationUs });
-            } catch (_) {
-                return;
-            }
-            mp4Video.encode(frame, { keyFrame: mp4FrameCount % mp4FrameRate === 0 });
-            frame.close();
-            mp4FrameCount++;
-            do {
-                mp4NextFrameDueMs += 1000 / mp4FrameRate;
-            } while (mp4NextFrameDueMs <= now - 0.25);
-        }
+        mp4Video.encode(frame, { keyFrame: mp4FrameCount % mp4FrameRate === 0 });
+        frame.close();
+        mp4FrameCount++;
     }
 
     if (exportRange && state.audioElement) {
