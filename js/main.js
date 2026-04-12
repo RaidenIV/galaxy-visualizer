@@ -52,6 +52,9 @@ function animate(now = performance.now()) {
     state.frameCount++;
     state.time += dt;
 
+    // Update audio analysis every frame so reactive values stay current
+    analyzeAudio(dt);
+
     // Effective audio values
     const rawAI = state.isPlaying ? state.currentAudioInfluence : 0.3;
     const ai    = Math.min(1, rawAI * state.reactivityMultiplier);
@@ -128,7 +131,8 @@ function animate(now = performance.now()) {
     controls.update();
 
     // ── Galaxy rotation ──
-    if (state.isPlaying || !state.audioLoaded) {
+    // Always rotate — ai/lowAI/midAI already fall back to gentle idle values when paused.
+    {
         const rotAI    = Math.min(1, ai + midAI * state.midRotationWeight);
         const rotSpeed = 0.05 * rotAI * dt * 60 * 0.5;
         rotateGalaxyParticles(rotSpeed);
