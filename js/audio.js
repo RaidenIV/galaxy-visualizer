@@ -419,8 +419,8 @@ export function getWaveformData() {
     return audioTimeData;
 }
 
-
-function snapshotAudioData() {
+export function getAudioData() {
+    updateAudioAnalysis();
     return {
         frequency: audioFreqData,
         waveform: audioTimeData,
@@ -429,12 +429,6 @@ function snapshotAudioData() {
         high: state.currentHighFreq,
         influence: state.currentAudioInfluence,
     };
-}
-
-export function getAudioData() {
-    ensureAudioContext();
-    ensureAnalysisBuffers();
-    return snapshotAudioData();
 }
 
 export function updateAudioAnalysis(dt = 1 / 60) {
@@ -448,7 +442,7 @@ export function updateAudioAnalysis(dt = 1 / 60) {
         state.currentAudioInfluence = lerp(state.currentAudioInfluence, 0, 0.12);
         state.lightningGlowDrive = lerp(state.lightningGlowDrive, 0, 0.08);
         state.smoothedBeamDrive = lerp(state.smoothedBeamDrive, 0, 0.08);
-        return snapshotAudioData();
+        return getAudioData();
     }
 
     state.analyser.getByteFrequencyData(audioFreqData);
@@ -493,7 +487,7 @@ export function updateAudioAnalysis(dt = 1 / 60) {
     state.audioBeat = beat;
     state.audioEnergy = energy;
 
-    return snapshotAudioData();
+    return getAudioData();
 }
 
 // Compatibility aliases for the original main.js, whose exact imports were not uploaded.
