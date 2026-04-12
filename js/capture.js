@@ -580,7 +580,6 @@ async function startMP4Export() {
     const codec = pickAvcCodec();
     mp4FrameRate = getSelectedFps();
     mp4FrameDurationUs = Math.round(1_000_000 / mp4FrameRate);
-    mp4NextFrameDueMs = null;
 
     const vOk = await VideoEncoder.isConfigSupported({
         codec,
