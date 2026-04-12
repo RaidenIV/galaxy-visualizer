@@ -129,7 +129,6 @@ export const GALAXY_TYPES = {
     grand:      { armCount: 2,  armTwist: 1.60, label: 'Grand Design Spiral' },
     flocculent: { armCount: 6,  armTwist: 0.55, label: 'Flocculent Spiral'  },
     multiarm:   { armCount: 5,  armTwist: 1.00, label: 'Multi-Arm Spiral'   },
-    tidal:      { armCount: 2,  armTwist: 2.05, label: 'Tidal Spiral'       },
     ring:       { armCount: 0,  armTwist: 0.00, label: 'Ring Galaxy'        },
     lenticular: { armCount: 0,  armTwist: 0.00, label: 'Lenticular (S0)'    },
     elliptical: { armCount: 0,  armTwist: 0.00, label: 'Elliptical'         },
