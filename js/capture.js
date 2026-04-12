@@ -65,6 +65,9 @@ let mp4Audio = null;
 let scriptNode = null;
 let audioTsUs = 0;
 let mp4FrameCount = 0;
+let mp4StartTime = null;
+let mp4NextFrameDueMs = null;
+let mp4LastTimestampUs = -1;
 let mp4FrameRate = 60;
 let mp4FrameDurationUs = Math.round(1_000_000 / 60);
 let stopRequested = false;
@@ -130,8 +133,14 @@ function ensureRenderProgressOverlay() {
         line-height: 1.4;
     }
     .render-progress-sub { margin-top: 8px; }
-    .render-progress-track {
+    .render-progress-bar-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
         margin-top: 14px;
+    }
+    .render-progress-track {
+        flex: 1;
         height: 10px;
         border-radius: 999px;
         overflow: hidden;
@@ -146,17 +155,19 @@ function ensureRenderProgressOverlay() {
         box-shadow: 0 0 18px rgba(90,150,255,0.45);
         transition: width 0.12s linear;
     }
+    .render-progress-pct {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        min-width: 38px;
+        text-align: right;
+        flex-shrink: 0;
+    }
     .render-progress-row {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
+        justify-content: flex-end;
         margin-top: 10px;
-    }
-    .render-progress-pct {
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 16px;
-        font-weight: 700;
     }
     .render-progress-cancel {
         border: 1px solid rgba(255,255,255,0.14);
@@ -181,9 +192,11 @@ function ensureRenderProgressOverlay() {
         <div class="render-progress-card" role="dialog" aria-modal="true" aria-live="polite">
             <div class="render-progress-title">Rendering MP4</div>
             <div class="render-progress-meta"></div>
-            <div class="render-progress-track"><div class="render-progress-fill"></div></div>
-            <div class="render-progress-row">
+            <div class="render-progress-bar-row">
+                <div class="render-progress-track"><div class="render-progress-fill"></div></div>
                 <div class="render-progress-pct">0%</div>
+            </div>
+            <div class="render-progress-row">
                 <button type="button" class="render-progress-cancel">Cancel</button>
             </div>
             <div class="render-progress-sub">Preparing export…</div>
@@ -632,6 +645,9 @@ async function startMP4Export() {
     if (aOk) await startAudioEncoding(sampleRate);
 
     mp4FrameCount = 0;
+    mp4StartTime = null;
+    mp4NextFrameDueMs = null;
+    mp4LastTimestampUs = -1;
     isMP4Recording = true;
     state.isRecording = true;
 
@@ -700,23 +716,40 @@ export function captureFrame(now) {
     renderOffscreen();
 
     if (isMP4Recording && mp4Video && mp4Video.encodeQueueSize <= 15) {
-        // ── Fix 3: use strictly sequential per-frame timestamps.
-        // The previous wall-clock approach advanced mp4NextFrameDueMs with a do-while
-        // loop to "catch up" when 4K frames took longer than 1000/fps ms. This silently
-        // skipped multiple frame-worth of PTS values, creating timestamp gaps that
-        // decoders render as screen tears or duplicate frames. Every animate() call
-        // during recording now produces exactly one encoded frame at the next
-        // sequential timestamp, keeping video and audio PTSes aligned.
-        const timestampUs = mp4FrameCount * mp4FrameDurationUs;
-        let frame;
-        try {
-            frame = new VideoFrame(recCanvas, { timestamp: timestampUs, duration: mp4FrameDurationUs });
-        } catch (_) {
-            return;
+        if (mp4StartTime === null) {
+            mp4StartTime = now;
+            mp4NextFrameDueMs = now;
         }
-        mp4Video.encode(frame, { keyFrame: mp4FrameCount % mp4FrameRate === 0 });
-        frame.close();
-        mp4FrameCount++;
+
+        // Wall-clock gate: only capture when enough real time has passed for the next
+        // frame slot. Unlike the previous do-while that advanced multiple slots at once
+        // (causing PTS gaps → tears), we advance by exactly one slot per capture.
+        // If rendering is slow we'll be behind, but we still emit at most one frame per
+        // animate() call — never skipping a timestamp.
+        if (now >= mp4NextFrameDueMs) {
+            // Anchor PTS to audio playback time, not the frame counter.
+            // If the GPU renders 4K slower than real-time, frame-counter PTS would
+            // make the video shorter than the audio track → desync. Using the audio
+            // element's currentTime as the canonical clock keeps them locked together.
+            const audioSec = state.audioElement
+                ? Math.max(0, state.audioElement.currentTime - (exportRange?.start ?? 0))
+                : mp4FrameCount * (mp4FrameDurationUs / 1_000_000);
+            // Encoder requires strictly monotonically increasing timestamps.
+            const timestampUs = Math.max(mp4LastTimestampUs + 1, Math.round(audioSec * 1_000_000));
+
+            let frame;
+            try {
+                frame = new VideoFrame(recCanvas, { timestamp: timestampUs, duration: mp4FrameDurationUs });
+            } catch (_) {
+                return;
+            }
+            mp4Video.encode(frame, { keyFrame: mp4FrameCount % mp4FrameRate === 0 });
+            frame.close();
+            mp4LastTimestampUs = timestampUs;
+            mp4FrameCount++;
+            // Advance by exactly one frame — never loop to "catch up"
+            mp4NextFrameDueMs += 1000 / mp4FrameRate;
+        }
     }
 
     if (exportRange && state.audioElement) {
