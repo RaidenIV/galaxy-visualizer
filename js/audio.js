@@ -3,11 +3,22 @@ import { state } from './state.js';
 const $ = (id) => document.getElementById(id);
 let uiTickRaf = 0;
 
+export let audioFreqData = new Uint8Array(0);
+export let audioTimeData = new Uint8Array(0);
+
 function emit(name, detail = {}) {
     window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
-function ensureAudioContext() {
+function clamp(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+}
+
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
+export function ensureAudioContext() {
     if (!state.audioContext) {
         state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
@@ -34,7 +45,16 @@ function ensureAudioContext() {
         state.gainNode.connect(state.mediaDest);
         state.mediaDestConnected = true;
     }
+    ensureAnalysisBuffers();
     return state.audioContext;
+}
+
+function ensureAnalysisBuffers() {
+    const bins = state.analyser ? state.analyser.frequencyBinCount : 1024;
+    if (audioFreqData.length !== bins) audioFreqData = new Uint8Array(bins);
+    if (audioTimeData.length !== bins) audioTimeData = new Uint8Array(bins);
+    state.audioFreqData = audioFreqData;
+    state.audioTimeData = audioTimeData;
 }
 
 function fmtTime(sec) {
@@ -43,10 +63,6 @@ function fmtTime(sec) {
     const m = Math.floor(s / 60);
     const r = Math.floor(s % 60);
     return `${m}:${String(r).padStart(2, '0')}`;
-}
-
-function clamp(val, min, max) {
-    return Math.max(min, Math.min(max, val));
 }
 
 function getLoopFallbackEnd() {
@@ -66,9 +82,9 @@ function syncProgressUI() {
     const currentTimeEl = $('current-time');
     const durationTimeEl = $('duration-time');
     const progressFill = $('progress-fill');
-    if (!el || !progressContainer) return;
+    if (!el) return;
 
-    if (state.audioLoaded) progressContainer.style.display = 'block';
+    if (progressContainer && state.audioLoaded) progressContainer.style.display = 'block';
     if (currentTimeEl) currentTimeEl.textContent = fmtTime(el.currentTime || 0);
     if (durationTimeEl) durationTimeEl.textContent = fmtTime(el.duration || 0);
     if (progressFill && Number.isFinite(el.duration) && el.duration > 0) {
@@ -154,6 +170,14 @@ export function updateAudioGain() {
     emit('audio-volume', { gain, muted: state.isMuted, sliderValue });
 }
 
+export async function resumeAudioContext() {
+    const ctx = ensureAudioContext();
+    if (ctx.state === 'suspended') {
+        try { await ctx.resume(); } catch (_) {}
+    }
+    return ctx;
+}
+
 export function seekTo(timeSec) {
     if (!state.audioElement) return;
     const dur = state.audioElement.duration || state.audioBuffer?.duration || 0;
@@ -174,9 +198,7 @@ export function stopAudioPlayback(resetToLoopStart = true) {
 
 export async function toggleAudioPlayback() {
     if (!state.audioElement || !state.audioLoaded) return;
-    if (state.audioContext?.state === 'suspended') {
-        try { await state.audioContext.resume(); } catch (_) {}
-    }
+    await resumeAudioContext();
     if (state.isPlaying) {
         state.audioElement.pause();
         return;
@@ -187,6 +209,14 @@ export async function toggleAudioPlayback() {
         }
     }
     await state.audioElement.play();
+}
+
+export async function playAudio() {
+    if (!state.isPlaying) await toggleAudioPlayback();
+}
+
+export function pauseAudio() {
+    if (state.audioElement) state.audioElement.pause();
 }
 
 export function setLoopEnabled(enabled) {
@@ -371,4 +401,127 @@ export async function loadAudioFile(file) {
     });
 
     syncProgressUI();
+    updateAudioAnalysis();
 }
+
+export function getAnalyser() {
+    ensureAudioContext();
+    return state.analyser;
+}
+
+export function getFrequencyData() {
+    ensureAudioContext();
+    return audioFreqData;
+}
+
+export function getWaveformData() {
+    ensureAudioContext();
+    return audioTimeData;
+}
+
+export function getAudioData() {
+    updateAudioAnalysis();
+    return {
+        frequency: audioFreqData,
+        waveform: audioTimeData,
+        low: state.currentLowFreq,
+        mid: state.currentMidFreq,
+        high: state.currentHighFreq,
+        influence: state.currentAudioInfluence,
+    };
+}
+
+export function updateAudioAnalysis(dt = 1 / 60) {
+    ensureAudioContext();
+    ensureAnalysisBuffers();
+
+    if (!state.audioLoaded || !state.analyser) {
+        state.currentLowFreq = lerp(state.currentLowFreq, 0, 0.12);
+        state.currentMidFreq = lerp(state.currentMidFreq, 0, 0.12);
+        state.currentHighFreq = lerp(state.currentHighFreq, 0, 0.12);
+        state.currentAudioInfluence = lerp(state.currentAudioInfluence, 0, 0.12);
+        state.lightningGlowDrive = lerp(state.lightningGlowDrive, 0, 0.08);
+        state.smoothedBeamDrive = lerp(state.smoothedBeamDrive, 0, 0.08);
+        return getAudioData();
+    }
+
+    state.analyser.getByteFrequencyData(audioFreqData);
+    state.analyser.getByteTimeDomainData(audioTimeData);
+
+    const n = audioFreqData.length;
+    const lowEnd = Math.max(1, Math.floor(n * 0.08));
+    const midEnd = Math.max(lowEnd + 1, Math.floor(n * 0.28));
+    const highEnd = Math.max(midEnd + 1, Math.floor(n * 0.78));
+
+    let low = 0, mid = 0, high = 0;
+    for (let i = 0; i < lowEnd; i++) low += audioFreqData[i];
+    for (let i = lowEnd; i < midEnd; i++) mid += audioFreqData[i];
+    for (let i = midEnd; i < highEnd; i++) high += audioFreqData[i];
+
+    low /= Math.max(1, lowEnd * 255);
+    mid /= Math.max(1, (midEnd - lowEnd) * 255);
+    high /= Math.max(1, (highEnd - midEnd) * 255);
+
+    const influenceRaw = clamp((low * 0.58 + mid * 0.30 + high * 0.12) * state.reactivityMultiplier, 0, 1.4);
+    state.currentLowFreq = lerp(state.currentLowFreq, low, 0.24);
+    state.currentMidFreq = lerp(state.currentMidFreq, mid, 0.18);
+    state.currentHighFreq = lerp(state.currentHighFreq, high, 0.16);
+    state.currentAudioInfluence = lerp(state.currentAudioInfluence, influenceRaw, 0.18);
+
+    const energy = low * 1.15 + mid * 0.55 + high * 0.35;
+    const history = state.beatHistory;
+    const idx = state.beatHistoryIdx % history.length;
+    history[idx] = energy;
+    state.beatHistoryIdx = (idx + 1) % history.length;
+    const avg = history.reduce((a, b) => a + b, 0) / history.length;
+    state.beatCooldown = Math.max(0, state.beatCooldown - dt);
+    const beat = avg > 0.001 && energy > avg * state.beatSensitivity && state.beatCooldown <= 0;
+    if (beat) state.beatCooldown = 0.14;
+
+    const beatBoost = beat ? clamp((energy - avg) * 1.8, 0, 1) : 0;
+    state.smoothedBloom = lerp(state.smoothedBloom, 1.0 + low * 0.45 + beatBoost * 0.35, 0.12);
+    state.smoothedBeamDrive = lerp(state.smoothedBeamDrive, high * 0.9 + beatBoost * 0.4, 0.14);
+    state.lightningGlowDrive = lerp(state.lightningGlowDrive, high * 0.8 + beatBoost * 0.6, 0.16);
+
+    state.audioPeak = Math.max(low, mid, high);
+    state.audioBeat = beat;
+    state.audioEnergy = energy;
+
+    return getAudioData();
+}
+
+// Compatibility aliases for the original main.js, whose exact imports were not uploaded.
+export const analyseAudio = updateAudioAnalysis;
+export const analyzeAudio = updateAudioAnalysis;
+export const updateAudioData = updateAudioAnalysis;
+export const updateAnalyzerData = updateAudioAnalysis;
+export const updateAnalyserData = updateAudioAnalysis;
+export const updateAudioFrame = updateAudioAnalysis;
+export const updateAudioState = updateAudioAnalysis;
+export const updateAudioReactiveState = updateAudioAnalysis;
+export const updateAudioReactivity = updateAudioAnalysis;
+export const processAudio = updateAudioAnalysis;
+export const processAudioFrame = updateAudioAnalysis;
+export const tickAudio = updateAudioAnalysis;
+export const tickAudioAnalysis = updateAudioAnalysis;
+export const initAudio = ensureAudioContext;
+export const initializeAudio = ensureAudioContext;
+export const ensureAudio = ensureAudioContext;
+
+export default {
+    ensureAudioContext,
+    loadAudioFile,
+    updateAudioGain,
+    updateAudioAnalysis,
+    toggleAudioPlayback,
+    stopAudioPlayback,
+    seekTo,
+    setLoopEnabled,
+    setLoopRegion,
+    setLoopBars,
+    setDetectedBpm,
+    getAnalyser,
+    getAudioData,
+    getFrequencyData,
+    getWaveformData,
+};
