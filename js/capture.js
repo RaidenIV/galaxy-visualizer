@@ -839,11 +839,8 @@ export async function startPngSequenceExport() {
         return;
     }
 
-    // Read settings from the PNG-sequence-specific controls
-    const pngFps = parseInt(pngSeqFpsSelect?.value || '60', 10);
-    const pngIs4k = pngSeqResSelect?.value === '4k';
-    const preset = pngIs4k ? EXPORT_PRESETS.mp4_4k : EXPORT_PRESETS.mp4_1080;
-    mp4FrameRate = pngFps;
+    const { fps, preset } = getSeqSettings();
+    mp4FrameRate       = fps;
     mp4FrameDurationUs = Math.round(1_000_000 / mp4FrameRate);
 
     const loopOnly = getLoopOnlyActive();
@@ -853,7 +850,6 @@ export async function startPngSequenceExport() {
         end:   loopOnly ? state.loopEnd   : state.audioElement.duration,
     };
     const duration     = exportRange.end - exportRange.start;
-    // Target frame count is informational only — actual count depends on GPU render speed
     const targetFrames = Math.ceil(duration * mp4FrameRate);
 
     // Try File System Access API first (Chrome/Edge 86+)
@@ -872,22 +868,15 @@ export async function startPngSequenceExport() {
         if (!ok) return;
     }
 
-    // PNG compresses dark/sparse content heavily — use ~10:1 ratio for space imagery
-    // rather than raw pixel bytes, which overstates by ~10x
     const bytesPerFrame = (preset.width * preset.height * 3) / 10;
     exportEstimatedBytes = targetFrames * bytesPerFrame;
     pngFrames        = [];
     pngFrameCount    = 0;
     pngPendingWrites = 0;
-    isPngSequence    = true;
-    state.isRecording = true;
     stopRequested    = false;
     exportCancelled  = false;
 
     buildRecordingPipeline(preset.width, preset.height);
-    showPngProgressOverlay(preset, exportRange, targetFrames);
-
-    // No wall-clock state needed — PNG sequence captures every animate() call
     mp4StartTime       = null;
     mp4NextFrameDueMs  = null;
     mp4LastTimestampUs = -1;
@@ -900,8 +889,15 @@ export async function startPngSequenceExport() {
     state.isPlaying = true;
     syncPlayButton(true);
 
-    if (pngSeqBtn) pngSeqBtn.textContent = 'Cancel PNG Seq';
-    captureStatus.textContent = `Exporting PNG sequence — target ${targetFrames} frames at ${mp4FrameRate} fps (${preset.label.replace(' MP4','')})…`;
+    // ── Set recording flags AFTER audio is positioned and confirmed playing ──
+    // If set earlier, captureFrame fires while audioElement.ended may still be true
+    // from a previous playthrough, triggering the stop condition immediately.
+    isPngSequence     = true;
+    state.isRecording = true;
+
+    showPngProgressOverlay(preset, exportRange, targetFrames);
+    if (pngSeqBtn) pngSeqBtn.textContent = 'Cancel';
+    captureStatus.textContent = `Exporting PNG sequence — target ${targetFrames} frames · ${mp4FrameRate} fps · ${preset.label.replace(' MP4','')}…`;
 }
 
 async function stopPngSequenceExport(cancelled = false) {
@@ -943,7 +939,7 @@ async function stopPngSequenceExport(cancelled = false) {
         restoreLiveAudioAfterExport();
         destroyRecordingPipeline();
         hideRenderProgressOverlay();
-        if (pngSeqBtn) pngSeqBtn.textContent = 'PNG Sequence';
+        if (pngSeqBtn) pngSeqBtn.textContent = 'Save Sequence';
         pngFrames    = [];
         pngDirHandle = null;
         exportRange  = null;
@@ -990,71 +986,143 @@ exportKindMp4?.addEventListener('change', () => setExportKind(exportKindMp4.chec
 exportKindPng?.addEventListener('change', () => setExportKind(exportKindPng.checked ? 'png' : 'mp4'));
 document.addEventListener('galaxy-loop-updated', syncRangeUI);
 
-// ── PNG Sequence controls (#10) — fps + resolution selects + button ──
-// Injected dynamically after the single-frame button since we don't own the HTML.
-let pngSeqBtn       = document.getElementById('png-seq-btn');
-let pngSeqFpsSelect = document.getElementById('png-seq-fps-select');
-let pngSeqResSelect = document.getElementById('png-seq-res-select');
+// ── PNG export UI — restructured inside pngSettings ──
+// Adds Single Frame / Sequence radio toggle at the top of the PNG settings panel.
+// Single Frame: existing size + orientation controls + frameBtn ("Save Frame")
+// Sequence: fps, resolution, orientation segmented controls + "Save Sequence" button
+let pngSeqBtn       = null;
+let pngSingleSection = null;
+let pngSeqSection   = null;
 
-if (!pngSeqBtn && frameBtn) {
+function getSeqSettings() {
+    const fps    = parseInt(pngSeqSection?.querySelector('input[name="seq-fps"]:checked')?.value    || '60',        10);
+    const res    =          pngSeqSection?.querySelector('input[name="seq-res"]:checked')?.value    ?? '1080';
+    const orient =          pngSeqSection?.querySelector('input[name="seq-orient"]:checked')?.value ?? 'landscape';
+    const key    = `${res}_${orient}`;
+    return { fps, preset: FRAME_EXPORT_PRESETS[key] || FRAME_EXPORT_PRESETS['1080_landscape'] };
+}
+
+function markSegSelected(group) {
+    group.querySelectorAll('.pseg-opt').forEach(opt => {
+        opt.classList.toggle('pseg-checked', !!opt.querySelector('input').checked);
+    });
+}
+
+function setupPngUI() {
+    if (!pngSettings) return;
+
     const style = document.createElement('style');
     style.textContent = `
-        .png-seq-controls {
-            display: flex; gap: 6px; align-items: center; margin: 5px 0;
-        }
-        .png-seq-select {
-            background: rgba(255,255,255,0.07);
-            border: 1px solid rgba(255,255,255,0.14);
-            border-radius: 8px;
-            color: #fff;
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 10px 8px;
-            cursor: pointer;
-            flex: 1;
-            outline: none;
-            appearance: none;
-            -webkit-appearance: none;
-            text-align: center;
-        }
-        .png-seq-select:hover { border-color: rgba(255,255,255,0.28); }
-        .png-seq-select option { background: #111; }
-        #png-seq-btn { flex: 2; margin: 0 !important; }
+    .pmr { display:flex; border:1px solid rgba(255,255,255,0.13); border-radius:9px; overflow:hidden; margin-bottom:10px; }
+    .pmr-label {
+        flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+        padding:9px 6px; cursor:pointer; user-select:none;
+        font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:600;
+        color:rgba(255,255,255,0.55); transition:color .15s, background .15s;
+    }
+    .pmr-label:first-child { border-right:1px solid rgba(255,255,255,0.10); }
+    .pmr-label.pmr-on { color:rgba(91,143,255,1); background:rgba(91,143,255,0.11); }
+    .pmr-radio { display:none; }
+    .pseq-opts { display:flex; gap:6px; margin-bottom:8px; }
+    .pseg { flex:1; }
+    .pseg-lbl { font-family:'Rajdhani',sans-serif; font-size:10px; font-weight:600;
+        color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+    .pseg-ctrl { display:flex; border:1px solid rgba(255,255,255,0.12); border-radius:7px; overflow:hidden; }
+    .pseg-opt {
+        flex:1; display:flex; align-items:center; justify-content:center;
+        padding:7px 3px; cursor:pointer; user-select:none;
+        font-family:'Rajdhani',sans-serif; font-size:12px; font-weight:600;
+        color:rgba(255,255,255,0.50); transition:color .12s, background .12s;
+        border-right:1px solid rgba(255,255,255,0.09);
+    }
+    .pseg-opt:last-child { border-right:none; }
+    .pseg-opt:hover { color:rgba(255,255,255,0.85); background:rgba(255,255,255,0.05); }
+    .pseg-opt.pseg-checked { color:rgba(91,143,255,1); background:rgba(91,143,255,0.12); }
+    .pseg-opt input { display:none; }
     `;
     document.head.appendChild(style);
 
-    const row = document.createElement('div');
-    row.className = 'png-seq-controls';
+    // Move all existing pngSettings children into the Single Frame section
+    pngSingleSection = document.createElement('div');
+    pngSingleSection.id = 'png-single-sec';
+    Array.from(pngSettings.children).forEach(c => pngSingleSection.appendChild(c));
+    if (frameBtn) frameBtn.textContent = 'Save Frame';
 
-    pngSeqFpsSelect = document.createElement('select');
-    pngSeqFpsSelect.id        = 'png-seq-fps-select';
-    pngSeqFpsSelect.className = 'png-seq-select';
-    pngSeqFpsSelect.title     = 'Frame rate for PNG sequence';
-    pngSeqFpsSelect.innerHTML = '<option value="30">30 fps</option><option value="60" selected>60 fps</option>';
+    // Build Sequence section
+    pngSeqSection = document.createElement('div');
+    pngSeqSection.id = 'png-seq-sec';
+    pngSeqSection.style.display = 'none';
 
-    pngSeqResSelect = document.createElement('select');
-    pngSeqResSelect.id        = 'png-seq-res-select';
-    pngSeqResSelect.className = 'png-seq-select';
-    pngSeqResSelect.title     = 'Resolution for PNG sequence';
-    pngSeqResSelect.innerHTML = '<option value="1080" selected>1080p</option><option value="4k">4K</option>';
+    const opts = document.createElement('div');
+    opts.className = 'pseq-opts';
+    opts.innerHTML = `
+        <div class="pseg">
+            <div class="pseg-lbl">Frame Rate</div>
+            <div class="pseg-ctrl" data-group="seq-fps">
+                <label class="pseg-opt"><input type="radio" name="seq-fps" value="30"> 30 fps</label>
+                <label class="pseg-opt pseg-checked"><input type="radio" name="seq-fps" value="60" checked> 60 fps</label>
+            </div>
+        </div>
+        <div class="pseg">
+            <div class="pseg-lbl">Resolution</div>
+            <div class="pseg-ctrl" data-group="seq-res">
+                <label class="pseg-opt pseg-checked"><input type="radio" name="seq-res" value="1080" checked> 1080p</label>
+                <label class="pseg-opt"><input type="radio" name="seq-res" value="2160"> 4K</label>
+            </div>
+        </div>
+        <div class="pseg">
+            <div class="pseg-lbl">Orientation</div>
+            <div class="pseg-ctrl" data-group="seq-orient">
+                <label class="pseg-opt pseg-checked"><input type="radio" name="seq-orient" value="landscape" checked> Land.</label>
+                <label class="pseg-opt"><input type="radio" name="seq-orient" value="portrait"> Port.</label>
+            </div>
+        </div>
+    `;
+    // Keep pseg-checked in sync when user changes a radio
+    opts.querySelectorAll('.pseg-ctrl').forEach(ctrl => {
+        ctrl.addEventListener('change', () => markSegSelected(ctrl));
+    });
 
     pngSeqBtn = document.createElement('button');
     pngSeqBtn.id          = 'png-seq-btn';
     pngSeqBtn.className   = 'primary';
-    pngSeqBtn.textContent = 'PNG Sequence';
-    pngSeqBtn.title       = 'Export every rendered frame as a PNG file';
+    pngSeqBtn.textContent = 'Save Sequence';
+    pngSeqBtn.style.cssText = 'width:100%;margin:6px 0 0';
+    pngSeqBtn.addEventListener('click', async () => {
+        if (isPngSequence) await stopPngSequenceExport(true);
+        else               await startPngSequenceExport();
+    });
 
-    row.appendChild(pngSeqFpsSelect);
-    row.appendChild(pngSeqResSelect);
-    row.appendChild(pngSeqBtn);
-    frameBtn.parentNode.insertBefore(row, frameBtn.nextSibling);
+    pngSeqSection.appendChild(opts);
+    pngSeqSection.appendChild(pngSeqBtn);
+
+    // Mode toggle row
+    const modeRow = document.createElement('div');
+    modeRow.className = 'pmr';
+    modeRow.innerHTML = `
+        <label class="pmr-label pmr-on">
+            <input type="radio" name="png-mode" value="single" checked class="pmr-radio"> Single Frame
+        </label>
+        <label class="pmr-label">
+            <input type="radio" name="png-mode" value="sequence" class="pmr-radio"> Sequence
+        </label>
+    `;
+    modeRow.addEventListener('change', e => {
+        const isSeq = e.target.value === 'sequence';
+        pngSingleSection.style.display = isSeq ? 'none' : '';
+        pngSeqSection.style.display    = isSeq ? ''     : 'none';
+        modeRow.querySelectorAll('.pmr-label').forEach(l =>
+            l.classList.toggle('pmr-on', l.querySelector('input').checked)
+        );
+    });
+
+    pngSettings.innerHTML = '';
+    pngSettings.appendChild(modeRow);
+    pngSettings.appendChild(pngSingleSection);
+    pngSettings.appendChild(pngSeqSection);
 }
 
-pngSeqBtn?.addEventListener('click', async () => {
-    if (isPngSequence) { await stopPngSequenceExport(true); }
-    else               { await startPngSequenceExport();    }
-});
+setupPngUI();
 setExportKind('mp4');
 syncFormatUI();
 syncFrameUI();
