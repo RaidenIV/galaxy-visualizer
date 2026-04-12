@@ -1,5 +1,52 @@
 import { state } from './state.js';
 
+// ── Loop enforcement on the HTMLMediaElement ──
+let _loopCheckFn = null;
+
+export function applyAudioLoop(loopStart, loopEnd) {
+    state.loopEnabled = true;
+    state.loopStart   = loopStart;
+    state.loopEnd     = loopEnd;
+
+    if (!state.audioElement) return;
+
+    // Remove any previous listener
+    if (_loopCheckFn) {
+        state.audioElement.removeEventListener('timeupdate', _loopCheckFn);
+        _loopCheckFn = null;
+    }
+
+    _loopCheckFn = () => {
+        if (!state.loopEnabled) return;
+        if (state.audioElement.currentTime >= state.loopEnd - 0.08) {
+            state.audioElement.currentTime = state.loopStart;
+        }
+    };
+    state.audioElement.addEventListener('timeupdate', _loopCheckFn);
+
+    // Jump into the loop region if currently outside it
+    if (state.audioElement.currentTime < loopStart ||
+        state.audioElement.currentTime >= loopEnd) {
+        state.audioElement.currentTime = loopStart;
+    }
+}
+
+export function clearAudioLoop() {
+    state.loopEnabled = false;
+    state.loopStart   = 0;
+    state.loopEnd     = 0;
+    if (_loopCheckFn && state.audioElement) {
+        state.audioElement.removeEventListener('timeupdate', _loopCheckFn);
+        _loopCheckFn = null;
+    }
+    // Update loop button UI
+    const loopBtn = document.getElementById('loop-btn');
+    if (loopBtn) {
+        loopBtn.textContent = '⌁ Loop';
+        loopBtn.classList.remove('loop-active');
+    }
+}
+
 // ── Audio analysis loop ──
 export function analyzeAudio() {
     requestAnimationFrame(analyzeAudio);
@@ -40,6 +87,7 @@ export function analyzeAudio() {
 export async function loadAudioFile(file) {
     const loadBtn     = document.getElementById('load-btn');
     const playBtn     = document.getElementById('play-btn');
+    const loopBtn     = document.getElementById('loop-btn');
     const audioNameEl = document.getElementById('audio-name');
 
     loadBtn.textContent = 'Loading...';
@@ -64,6 +112,9 @@ export async function loadAudioFile(file) {
         if (state.audioElement) { state.audioElement.pause(); state.audioElement.currentTime = 0; }
         if (state.audioSource)  { try { state.audioSource.disconnect(); } catch (_) {} state.audioSource = null; }
 
+        // Clear any previous loop
+        clearAudioLoop();
+
         state.audioElement = new Audio();
         state.audioElement.crossOrigin = 'anonymous';
         const url = URL.createObjectURL(file);
@@ -87,11 +138,19 @@ export async function loadAudioFile(file) {
             state.mediaDestConnected = true;
         }
 
+        // Store file reference for BPM popup
+        state.audioFile = file;
+
         state.audioLoaded = true;
         state.isPlaying   = false;
         playBtn.disabled    = false;
         playBtn.textContent = '▶ Play';
         playBtn.className   = 'play';
+        if (loopBtn) {
+            loopBtn.disabled    = false;
+            loopBtn.textContent = '⌁ Loop';
+            loopBtn.classList.remove('loop-active');
+        }
         audioNameEl.textContent = file.name;
         document.getElementById('progress-container').style.display = 'block';
 

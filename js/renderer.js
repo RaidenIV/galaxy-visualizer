@@ -12,7 +12,6 @@ import {
     BLOOM_LAYER,
     CAMERA_PRESETS,
     CAM_LERP_DUR,
-    VISUAL_MODES,
     BASE_GALAXY_COUNT,
     BASE_STAR_COUNT,
     BASE_SCATTER_COUNT,
@@ -97,10 +96,6 @@ const finalPass = new ShaderPass(new THREE.ShaderMaterial({
 }), 'baseTexture');
 finalComposer.addPass(finalPass);
 
-function getVisualModeConfig() {
-    return VISUAL_MODES[state.visualMode] || VISUAL_MODES['1080p'];
-}
-
 function setComposerResolution(composer, cssW, cssH, pixelRatio) {
     if (typeof composer.setPixelRatio === 'function') {
         composer.setPixelRatio(pixelRatio);
@@ -110,45 +105,29 @@ function setComposerResolution(composer, cssW, cssH, pixelRatio) {
     composer.setSize(Math.round(cssW * pixelRatio), Math.round(cssH * pixelRatio));
 }
 
+function applyScaledCounts(baseGalaxy, baseStars, baseScatter, baseHalo, baseNebula) {
+    state.baseGalaxyCount    = Math.min(N_GALAXY,  Math.floor(baseGalaxy));
+    state.activeStarCount    = Math.min(N_STARS,   Math.floor(baseStars));
+    state.activeScatterCount = Math.min(N_SCATTER, Math.floor(baseScatter));
+    state.activeHaloCount    = Math.min(N_HALO,    Math.floor(baseHalo));
+    state.activeNebulaCount  = Math.min(N_NEBULA,  Math.floor(baseNebula));
+}
 
-
-function getLiveBloomPixelRatio(cssW, cssH, livePixelRatio) {
-    const mode = getVisualModeConfig();
-    const baseScale = Math.min(1, Math.max(0.5, mode.bloomResolutionScale ?? 1.0));
+// ── Pixel ratio helper — always targets 1080p for live render ──
+export function setRendererPixelRatioFromPreset() {
+    const cssW = Math.max(1, window.innerWidth);
+    const cssH = Math.max(1, window.innerHeight);
+    const targetPixels = 1920 * 1080;
+    const desiredPixelRatio = Math.min(4, Math.max(0.5, Math.sqrt(targetPixels / (cssW * cssH))));
     const presetScale = state.performancePreset === 'quality'
         ? 1.0
         : state.performancePreset === 'balanced'
             ? 0.90
             : 0.78;
-    const effectiveScale = state.visualMode === '4k'
-        ? Math.min(1, Math.max(0.5, baseScale * presetScale))
-        : 1.0;
-    const bloomPixelRatio = Math.min(livePixelRatio, Math.max(0.5, livePixelRatio * effectiveScale));
-    state.liveBloomPixelRatio = bloomPixelRatio;
-    return bloomPixelRatio;
-}
-
-
-function applyScaledCounts(baseGalaxy, baseStars, baseScatter, baseHalo, baseNebula) {
-    const mode = getVisualModeConfig();
-    const layer = mode.layerDensityMultipliers || {};
-    state.baseGalaxyCount    = Math.min(N_GALAXY,  Math.floor(baseGalaxy  * (layer.galaxy  ?? mode.densityMultiplier ?? 1)));
-    state.activeStarCount    = Math.min(N_STARS,   Math.floor(baseStars   * (layer.stars   ?? mode.densityMultiplier ?? 1)));
-    state.activeScatterCount = Math.min(N_SCATTER, Math.floor(baseScatter * (layer.scatter ?? mode.densityMultiplier ?? 1)));
-    state.activeHaloCount    = Math.min(N_HALO,    Math.floor(baseHalo    * (layer.halo    ?? mode.densityMultiplier ?? 1)));
-    state.activeNebulaCount  = Math.min(N_NEBULA,  Math.floor(baseNebula  * (layer.nebula  ?? mode.densityMultiplier ?? 1)));
-}
-
-// ── Pixel ratio helper ──
-export function setRendererPixelRatioFromPreset() {
-    const cssW = Math.max(1, window.innerWidth);
-    const cssH = Math.max(1, window.innerHeight);
-    const mode = getVisualModeConfig();
-    const targetPixels = mode.width * mode.height;
-    const desiredPixelRatio = Math.min(4, Math.max(0.5, Math.sqrt(targetPixels / (cssW * cssH))));
-    const bloomPixelRatio = getLiveBloomPixelRatio(cssW, cssH, desiredPixelRatio);
+    const bloomPixelRatio = Math.min(desiredPixelRatio, Math.max(0.5, desiredPixelRatio * presetScale));
 
     state.liveRenderPixelRatio = desiredPixelRatio;
+    state.liveBloomPixelRatio  = bloomPixelRatio;
 
     renderer.setPixelRatio(desiredPixelRatio);
     renderer.setSize(cssW, cssH, false);

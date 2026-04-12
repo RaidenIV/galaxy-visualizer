@@ -8,51 +8,11 @@ export const BASE_SCATTER_COUNT = 10000;
 export const BASE_HALO_COUNT    = 12000;
 export const BASE_NEBULA_COUNT  = 4500;
 
-
-export const VISUAL_MODES = {
-    '1080p': {
-        label: '1080p',
-        width: 1920,
-        height: 1080,
-        densityMultiplier: 1.0,
-        bloomResolutionScale: 1.0,
-        layerDensityMultipliers: {
-            galaxy: 1.0,
-            stars: 1.0,
-            scatter: 1.0,
-            halo: 1.0,
-            nebula: 1.0,
-        },
-    },
-    '4k': {
-        label: '4K',
-        width: 3840,
-        height: 2160,
-        densityMultiplier: 4.0,
-        bloomResolutionScale: 0.68,
-        layerDensityMultipliers: {
-            galaxy: 4.0,
-            stars: 1.80,
-            scatter: 1.25,
-            halo: 1.65,
-            nebula: 1.35,
-        },
-    },
-};
-
-const MAX_LAYER_MULTIPLIERS = {
-    galaxy:  Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.galaxy  ?? mode.densityMultiplier ?? 1)),
-    stars:   Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.stars   ?? mode.densityMultiplier ?? 1)),
-    scatter: Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.scatter ?? mode.densityMultiplier ?? 1)),
-    halo:    Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.halo    ?? mode.densityMultiplier ?? 1)),
-    nebula:  Math.max(...Object.values(VISUAL_MODES).map(mode => mode.layerDensityMultipliers?.nebula  ?? mode.densityMultiplier ?? 1)),
-};
-
-export const N_GALAXY  = Math.floor(BASE_GALAXY_COUNT  * MAX_LAYER_MULTIPLIERS.galaxy);
-export const N_STARS   = Math.floor(BASE_STAR_COUNT    * MAX_LAYER_MULTIPLIERS.stars);
-export const N_SCATTER = Math.floor(BASE_SCATTER_COUNT * MAX_LAYER_MULTIPLIERS.scatter);
-export const N_HALO    = Math.floor(BASE_HALO_COUNT    * MAX_LAYER_MULTIPLIERS.halo);
-export const N_NEBULA  = Math.floor(BASE_NEBULA_COUNT  * MAX_LAYER_MULTIPLIERS.nebula);
+export const N_GALAXY  = BASE_GALAXY_COUNT;
+export const N_STARS   = BASE_STAR_COUNT;
+export const N_SCATTER = BASE_SCATTER_COUNT;
+export const N_HALO    = BASE_HALO_COUNT;
+export const N_NEBULA  = BASE_NEBULA_COUNT;
 
 export const BLOOM_LAYER = 1;
 export const CORE_CENTER_BLOOM_REDUCTION = 0.5;
@@ -134,6 +94,7 @@ export const GALAXY_TYPES = {
     elliptical: { armCount: 0,  armTwist: 0.00, label: 'Elliptical'         },
     irregular:  { armCount: -1, armTwist: 0.50, label: 'Irregular'          },
     core:       { armCount: -1, armTwist: 0.50, label: 'Eye'                },
+    polarring:  { armCount: -1, armTwist: 0.00, label: 'Polar Ring'         },
 };
 
 export const CAMERA_PRESETS = {

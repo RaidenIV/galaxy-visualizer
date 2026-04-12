@@ -76,15 +76,27 @@ export const starMat = new THREE.ShaderMaterial({
         varying   float vSpike;
         varying   float vGlow;
         void main() {
-            float baseTwinkle = 1.0 + 0.08 * sin(uTime * 3.1 + aPhase)
-                                     + 0.04 * sin(uTime * 7.3 + aPhase * 1.7);
-            float flickerBucket = floor(uTime * (2.2 + 1.8 * fract(sin(aPhase * 12.9898) * 43758.5453)) + aPhase * 23.0);
+            // Multi-frequency base twinkle — much more pronounced than before
+            float baseTwinkle = 1.0
+                + 0.38 * sin(uTime * 3.8  + aPhase)
+                + 0.20 * sin(uTime * 11.3 + aPhase * 1.7)
+                + 0.10 * sin(uTime * 24.7 + aPhase * 2.3);
+
+            // Per-star random flicker that changes bucket every ~0.2–0.5 s
+            float flickerRate   = 2.8 + 3.5 * fract(sin(aPhase * 12.9898) * 43758.5453);
+            float flickerBucket = floor(uTime * flickerRate + aPhase * 23.0);
             float randomFlicker = fract(sin(flickerBucket * 78.233 + aPhase * 37.719) * 43758.5453);
-            float flicker = mix(0.82, 1.22, randomFlicker);
-            float twinkle = baseTwinkle * mix(1.0, flicker, 0.60);
-            vColor = aColor; vBright = aBright * twinkle; vSpike = aSpike; vGlow = aBright * twinkle;
+            // Wide range: some stars nearly go dark, others flare bright
+            float flicker = mix(0.28, 2.10, randomFlicker);
+            float twinkle = baseTwinkle * mix(1.0, flicker, 0.88);
+
+            vColor  = aColor;
+            vBright = aBright * twinkle;
+            vSpike  = aSpike;
+            vGlow   = aBright * twinkle;
+
             vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-            gl_PointSize = aSize * uAudioInfluence * (0.92 + twinkle * 0.38) * (390.0 / -mvPos.z);
+            gl_PointSize = aSize * uAudioInfluence * (0.80 + twinkle * 0.55) * (390.0 / -mvPos.z);
             gl_Position  = projectionMatrix * mvPos;
         }
     `,
@@ -103,7 +115,7 @@ export const starMat = new THREE.ShaderMaterial({
                 float ax = abs(uv.x), ay = abs(uv.y);
                 float hArm = smoothstep(0.006, 0.0, ay) * smoothstep(0.5, 0.05, ax);
                 float vArm = smoothstep(0.006, 0.0, ax) * smoothstep(0.5, 0.05, ay);
-                spike = (hArm + vArm) * 0.55;
+                spike = (hArm + vArm) * 0.65;
             }
             float alpha = (core + spike) * vBright * 1.42;
             if (alpha < 0.004) discard;

@@ -1,7 +1,6 @@
 import { DEFAULT_CMAP_INDEX, GALAXY_TYPES, BEAT_HISTORY } from './constants.js';
 
 // ── Single shared mutable state object ──
-// All modules import this and read/write properties directly.
 export const state = {
     // Camera & controls
     autoRotateEnabled:  false,
@@ -24,11 +23,10 @@ export const state = {
     galaxyArmTwist:     0.50,
     galaxyTypeKey:      'core',
     galaxyStarAmountMultiplier: 1.0,
-    maxGalaxyRxy:       0,  // set after galaxy init
+    maxGalaxyRxy:       0,
 
-    // Performance & rendering
+    // Performance & rendering (always 1080p live, 4K export)
     performancePreset:  'quality',
-    visualMode:         '1080p',
     liveRenderPixelRatio: 1.0,
     liveBloomPixelRatio:  1.0,
     baseGalaxyCount:    75000,
@@ -37,7 +35,6 @@ export const state = {
     activeScatterCount: 10000,
     activeHaloCount:    12000,
     activeNebulaCount:  4500,
-    renderPixelRatioCap: 2.0,
     lastFrameTime:      performance.now(),
     fpsFrameCount:      0,
     fpsLastTime:        performance.now(),
@@ -96,6 +93,13 @@ export const state = {
     audioLoaded:       false,
     isPlaying:         false,
     isMuted:           false,
+    audioFile:         null,  // raw File object for BPM popup
+
+    // Loop region (set by BPM popup)
+    loopEnabled:    false,
+    loopStart:      0,
+    loopEnd:        0,
+    detectedBpm:    0,
 
     // Capture / recording
     mediaRecorder:  null,

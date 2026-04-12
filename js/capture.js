@@ -12,27 +12,25 @@ import { BLOOM_LAYER } from './constants.js';
 const captureStatus  = document.getElementById('capture-status');
 const recordBtn      = document.getElementById('record-btn');
 const frameBtn       = document.getElementById('frame-btn');
-const frameSizeSelect= document.getElementById('frame-size-select');
 const formatSelect   = document.getElementById('record-format-select');
-const resSelect      = document.getElementById('record-resolution-select');
 const bitrateSelect  = document.getElementById('record-bitrate-select');
 const bitrateRow     = document.getElementById('record-bitrate-row');
 
-// ── Offscreen recording pipeline (shared by MP4 and WebM) ──
-// The main display renderer is NEVER modified during recording.
+// ── All exports are always 4K ──
+const EXPORT_W = 3840;
+const EXPORT_H = 2160;
+
+// ── Offscreen recording pipeline ──
 let recCanvas        = null;
 let recRenderer      = null;
 let recBloomComposer = null;
 let recFinalComposer = null;
 let recBloomPass     = null;
-let recW = 0, recH = 0;
 
-function buildRecordingPipeline(w, h) {
-    recW = w; recH = h;
-
+function buildRecordingPipeline() {
     recCanvas        = document.createElement('canvas');
-    recCanvas.width  = w;
-    recCanvas.height = h;
+    recCanvas.width  = EXPORT_W;
+    recCanvas.height = EXPORT_H;
 
     recRenderer = new THREE.WebGLRenderer({
         canvas: recCanvas,
@@ -42,12 +40,11 @@ function buildRecordingPipeline(w, h) {
         powerPreference: 'high-performance',
     });
     recRenderer.setPixelRatio(1);
-    recRenderer.setSize(w, h);
+    recRenderer.setSize(EXPORT_W, EXPORT_H);
     recRenderer.setClearColor(0x000000);
 
-    // Bloom composer — sync initial params from live bloom pass
     recBloomPass = new UnrealBloomPass(
-        new THREE.Vector2(w, h),
+        new THREE.Vector2(EXPORT_W, EXPORT_H),
         bloomPass.strength, bloomPass.radius, bloomPass.threshold
     );
     recBloomComposer = new EffectComposer(recRenderer);
@@ -55,7 +52,6 @@ function buildRecordingPipeline(w, h) {
     recBloomComposer.addPass(new RenderPass(scene, camera));
     recBloomComposer.addPass(recBloomPass);
 
-    // Final composer — composite bloom + base
     const finalMat = new THREE.ShaderMaterial({
         uniforms: {
             baseTexture:  { value: null },
@@ -81,19 +77,15 @@ function buildRecordingPipeline(w, h) {
 function destroyRecordingPipeline() {
     if (recRenderer) { recRenderer.dispose(); recRenderer = null; }
     recCanvas = recBloomComposer = recFinalComposer = recBloomPass = null;
-    recW = recH = 0;
 }
 
-// Render one frame to the offscreen canvas.
-// Saves/restores camera.aspect so the main display is unaffected.
 function renderOffscreen() {
-    // Sync live bloom params every frame so the recording matches the display
     recBloomPass.strength  = bloomPass.strength;
     recBloomPass.radius    = bloomPass.radius;
     recBloomPass.threshold = bloomPass.threshold;
 
     const savedAspect = camera.aspect;
-    camera.aspect = recW / recH;
+    camera.aspect = EXPORT_W / EXPORT_H;
     camera.updateProjectionMatrix();
 
     camera.layers.set(BLOOM_LAYER);
@@ -105,25 +97,13 @@ function renderOffscreen() {
     camera.updateProjectionMatrix();
 }
 
-// ── Dimensions ──
-function getRecordingDimensions() {
-    const mode = state.visualMode === '4k' ? '4k' : '1080p';
-    return mode === '4k'
-        ? { w: 3840, h: 2160 }
-        : { w: 1920, h: 1080 };
-}
-
-function pickAvcCodec(w, h) {
-    return (w > 1920 || h > 1920) ? 'avc1.640033' : 'avc1.640028';
-}
-
-// ── PNG frame export (one-shot: uses the offscreen capture pipeline) ──
-async function exportFrameAtSize(w, h) {
-    buildRecordingPipeline(w, h);
+// ── PNG frame export — always 4K ──
+async function exportFrame() {
+    buildRecordingPipeline();
     try {
         renderOffscreen();
         await new Promise((resolve) => {
-            const name = `galaxy_frame_${w}x${h}_${Date.now()}.png`;
+            const name = `galaxy_frame_4K_${Date.now()}.png`;
             const finish = (blob) => {
                 if (!blob) {
                     const a = document.createElement('a');
@@ -154,12 +134,11 @@ function pickWebMType() {
 
 async function startWebMRecording() {
     if (!window.MediaRecorder) { captureStatus.textContent = 'MediaRecorder not supported.'; return; }
-    const { w, h } = getRecordingDimensions();
     if (state.audioContext && state.audioContext.state === 'suspended') {
         try { await state.audioContext.resume(); } catch (_) {}
     }
 
-    buildRecordingPipeline(w, h);
+    buildRecordingPipeline();
 
     const videoTracks = recCanvas.captureStream(60).getVideoTracks();
     const audioTracks = (state.mediaDest && state.mediaDest.stream)
@@ -181,7 +160,7 @@ async function startWebMRecording() {
     webmRecorder.start();
     state.isRecording = true;
     recordBtn.textContent = '■ Stop Recording';
-    captureStatus.textContent = `Recording WebM (${w}×${h})…`;
+    captureStatus.textContent = `Recording WebM (4K)…`;
 }
 
 function stopWebMRecording() { if (webmRecorder) webmRecorder.stop(); }
@@ -239,18 +218,21 @@ async function loadMp4Muxer() {
     return Mp4MuxerLib;
 }
 
+function pickAvcCodec() {
+    return 'avc1.640033'; // always 4K → high profile
+}
+
 async function startMP4Recording() {
     if (!window.VideoEncoder) {
         captureStatus.textContent = 'MP4 requires Chrome 94+ or Edge. Try WebM instead.'; return;
     }
-    const { w, h } = getRecordingDimensions();
     const bitrateMbps = bitrateSelect ? parseInt(bitrateSelect.value) : 16;
     const bitrate     = bitrateMbps * 1_000_000;
-    const codec       = pickAvcCodec(w, h);
+    const codec       = pickAvcCodec();
 
-    const vOk = await VideoEncoder.isConfigSupported({ codec, width: w, height: h, bitrate, framerate: 60 });
+    const vOk = await VideoEncoder.isConfigSupported({ codec, width: EXPORT_W, height: EXPORT_H, bitrate, framerate: 60 });
     if (!vOk.supported) {
-        captureStatus.textContent = `Codec unsupported at ${w}×${h}. Try a lower resolution.`; return;
+        captureStatus.textContent = `Codec unsupported at 4K. Try WebM instead.`; return;
     }
 
     const { Muxer, ArrayBufferTarget } = await loadMp4Muxer();
@@ -258,12 +240,11 @@ async function startMP4Recording() {
     const aOk = window.AudioEncoder && state.gainNode &&
         (await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 192_000 })).supported;
 
-    // Build offscreen pipeline AFTER all async checks — display never changes
-    buildRecordingPipeline(w, h);
+    buildRecordingPipeline();
 
     mp4Muxer = new Muxer({
         target: new ArrayBufferTarget(),
-        video:  { codec: 'avc', width: w, height: h },
+        video:  { codec: 'avc', width: EXPORT_W, height: EXPORT_H },
         ...(aOk && { audio: { codec: 'aac', sampleRate, numberOfChannels: 2 } }),
         fastStart: 'in-memory',
     });
@@ -272,14 +253,14 @@ async function startMP4Recording() {
         output: (chunk, meta) => mp4Muxer.addVideoChunk(chunk, meta),
         error:  (e) => { captureStatus.textContent = 'Video encode error: ' + e.message; stopMP4Recording(); },
     });
-    mp4Video.configure({ codec, width: w, height: h, bitrate, framerate: 60, latencyMode: 'quality' });
+    mp4Video.configure({ codec, width: EXPORT_W, height: EXPORT_H, bitrate, framerate: 60, latencyMode: 'quality' });
 
     if (aOk) await startAudioEncoding(sampleRate);
 
     mp4FrameCount = 0; mp4StartTime = null; mp4LastTime = null;
     isMP4Recording = true; state.isRecording = true;
     recordBtn.textContent = '■ Stop Recording';
-    captureStatus.textContent = `Recording MP4 (${w}×${h} · ${bitrateMbps} Mbps${aOk ? ' · audio' : ''})…`;
+    captureStatus.textContent = `Recording MP4 (4K · ${bitrateMbps} Mbps${aOk ? ' · audio' : ''})…`;
 }
 
 async function stopMP4Recording() {
@@ -305,15 +286,11 @@ async function stopMP4Recording() {
     }
 }
 
-// ── captureFrame — called by main.js every frame after the main render ──
+// ── captureFrame — called by main.js every frame ──
 export function captureFrame(now) {
     if (!state.isRecording || !recCanvas) return;
-
-    // Render the scene to the offscreen canvas at capture resolution.
-    // The main display renderer is completely untouched.
     renderOffscreen();
 
-    // MP4: encode the offscreen frame
     if (isMP4Recording && mp4Video && mp4Video.encodeQueueSize <= 15) {
         if (mp4StartTime === null) { mp4StartTime = now; mp4LastTime = now; }
         const timestampUs = Math.round((now - mp4StartTime) * 1000);
@@ -326,7 +303,6 @@ export function captureFrame(now) {
         frame.close();
         mp4FrameCount++;
     }
-    // WebM: MediaRecorder captures from recCanvas.captureStream() automatically
 }
 
 // ── Buttons ──
@@ -340,43 +316,21 @@ recordBtn.addEventListener('click', async () => {
 });
 
 frameBtn.addEventListener('click', async () => {
-    const preset = frameSizeSelect ? frameSizeSelect.value : 'current';
-    let w = Math.floor(window.innerWidth), h = Math.floor(window.innerHeight);
-    if (preset === '1080p') { w = 1920; h = 1080; }
-    else if (preset === '4k') { w = 3840; h = 2160; }
-    captureStatus.textContent = `Saving frame (${w}×${h})…`;
-    try { await exportFrameAtSize(w, h); captureStatus.textContent = 'Frame saved.'; }
+    captureStatus.textContent = 'Saving frame (4K)…';
+    try { await exportFrame(); captureStatus.textContent = 'Frame saved (4K).'; }
     catch (e) { captureStatus.textContent = 'Frame capture failed.'; }
 });
 
 // ── UI sync ──
-function syncCaptureModeUI() {
-    const label = state.visualMode === '4k' ? '4K' : '1080p';
-    if (resSelect) {
-        resSelect.disabled = true;
-        resSelect.value = state.visualMode === '4k' ? '4k' : '1080p';
-    }
-    const valueEl = document.getElementById('record-resolution-value');
-    if (valueEl) valueEl.textContent = label;
-}
-window.addEventListener('galaxy-visual-mode-change', syncCaptureModeUI);
-syncCaptureModeUI();
-
 function syncFormatUI() {
     const isMp4 = !formatSelect || formatSelect.value === 'mp4';
     if (bitrateRow) bitrateRow.style.display = isMp4 ? '' : 'none';
     const noteEl = document.getElementById('capture-note');
     if (noteEl) noteEl.textContent = isMp4
-        ? 'MP4: Chrome/Edge · H.264 · exports at the current visual mode'
-        : 'WebM: all browsers · VP9 · exports at the current visual mode';
-    syncCaptureModeUI();
+        ? 'MP4: Chrome/Edge · H.264 · 4K'
+        : 'WebM: all browsers · VP9 · 4K';
 }
 if (formatSelect) { formatSelect.addEventListener('change', syncFormatUI); syncFormatUI(); }
-
-if (frameSizeSelect) frameSizeSelect.addEventListener('change', (e) => {
-    const el = document.getElementById('frame-size-value');
-    if (el) el.textContent = e.target.options[e.target.selectedIndex].text;
-});
 
 // ── Collapsible toggle ──
 (function () {

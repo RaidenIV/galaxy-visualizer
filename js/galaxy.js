@@ -359,6 +359,65 @@ export function buildGalaxy(armCount, armTwist, typeKey) {
         state.maxGalaxyRxy = fmx; finalize(); return;
     }
 
+    if (type === 'polarring') {
+        // ── Polar Ring Galaxy — flat lenticular host + perpendicular stellar ring ──
+        // ~58% particles form the flat lenticular host disc in the XZ plane
+        // ~42% form a luminous ring perpendicular to the host (the polar ring, in XY plane)
+        let fmx = 0;
+        const RING_FRAC = 0.42;
+        for (let i = 0; i < N_GALAXY; i++) {
+            const inPolarRing = Math.random() < RING_FRAC;
+            if (inPolarRing) {
+                // Ring: centred in XY plane (appears as a vertical hoop around the host)
+                const ringNorm = 0.50 + 0.32 * Math.pow(Math.random(), 1.8);
+                const ringR    = state.maxGalaxyRxy * ringNorm;
+                const phi      = Math.random() * Math.PI * 2;
+                const jitter   = (Math.random() - 0.5) * state.maxGalaxyRxy * 0.06;
+                gx[i] = (ringR + jitter) * Math.cos(phi);
+                gy[i] = (ringR + jitter) * Math.sin(phi); // vertical extent
+                gz[i] = (Math.random() - 0.5) * state.maxGalaxyRxy * 0.10; // thin lateral spread
+                galaxyRxy[i]   = Math.sqrt(gx[i]*gx[i] + gz[i]*gz[i]);
+                galaxyTheta[i] = Math.atan2(gz[i], gx[i]);
+                if (galaxyRxy[i] > fmx) fmx = galaxyRxy[i];
+                const rNorm = saturate(ringNorm);
+                galaxyNormR[i] = rNorm;
+                const ringGlow  = Math.exp(-Math.pow((rNorm - 0.68) / 0.16, 2.0));
+                const ringEdge  = Math.pow(saturate((rNorm - 0.80) / 0.20), 1.2);
+                galaxyDustWeight[i]   = ringGlow * 0.15;
+                galaxyWarmCore[i]     = Math.exp(-Math.pow(rNorm / 0.22, 2.0)) * 0.25;
+                galaxyArmGlow[i]      = ringGlow * 1.1;
+                galaxyMidBlue[i]      = ringGlow * 0.90; // polar rings are actively star-forming → blue
+                galaxyOuterCool[i]    = ringEdge;
+                galaxyNebulaWeight[i] = ringGlow * 0.55;
+                let sr = Math.exp((Math.random() * 2.0 - 1.0) * 0.78);
+                galaxySizeScale[i]  = Math.max(0.35, Math.min(4.8, sr * (0.75 + ringGlow * 0.60)));
+                galaxyAlphaScale[i] = saturate(0.08 + 0.65 * ringGlow + 0.10 * (1.0 - rNorm));
+            } else {
+                // Host: lenticular — very flat disc in XZ plane
+                const rNorm = saturate(galaxyRxy[i] / (state.maxGalaxyRxy + 1e-5));
+                galaxyNormR[i] = rNorm;
+                gy[i] = gy[i] * (0.010 + 0.016 * rNorm);
+                if (galaxyRxy[i] > fmx) fmx = galaxyRxy[i];
+                const bulge = Math.exp(-Math.pow(rNorm / 0.20, 2.0));
+                galaxyDustWeight[i]   = 0;
+                galaxyWarmCore[i]     = bulge;
+                galaxyArmGlow[i]      = 0;
+                galaxyMidBlue[i]      = Math.exp(-Math.pow((rNorm - 0.56) / 0.18, 2.0)) * 0.5;
+                galaxyOuterCool[i]    = Math.pow(saturate((rNorm - 0.70) / 0.30), 1.20);
+                galaxyNebulaWeight[i] = 0;
+                let sr = Math.exp((Math.random() * 2.0 - 1.0) * 0.78);
+                galaxySizeScale[i]  = Math.max(0.35, Math.min(4.8, sr * (0.75 + bulge * 0.95)));
+                galaxyAlphaScale[i] = saturate(0.18 + 0.55 * bulge + 0.18 * (1.0 - rNorm));
+                gx[i] = galaxyRxy[i] * Math.cos(galaxyTheta[i]);
+                gz[i] = galaxyRxy[i] * Math.sin(galaxyTheta[i]);
+            }
+            galaxyPositionsBuf[i*3]   = gx[i];
+            galaxyPositionsBuf[i*3+1] = gy[i];
+            galaxyPositionsBuf[i*3+2] = gz[i];
+        }
+        state.maxGalaxyRxy = fmx; finalize(); return;
+    }
+
     // ── Standard spiral types ──
     const typeParams = {
         barred:     { armStrength: 0.30, armPow: 2.2, bulgeFrac: 0.18, dustStr: 0.45, vertMul: 1.0,  hasBar: true,  clumpMix: 0.30 },
@@ -426,6 +485,7 @@ export function rotateGalaxyParticles(rotSpeed) {
         if (t === 'elliptical')  rotAmt = rotSpeed * 0.04;
         else if (t === 'lenticular') rotAmt = rotSpeed * 0.25;
         else if (t === 'ring')   rotAmt = rotSpeed * 0.30;
+        else if (t === 'polarring') rotAmt = rotSpeed * 0.20;
         else if (t === 'irregular') rotAmt = rotSpeed * 0.18 + (Math.sin(galaxyTheta[i] * 3.7) * 0.0002);
         else rotAmt = rotSpeed * differentialFactor;
         galaxyTheta[i] += rotAmt;

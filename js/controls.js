@@ -10,7 +10,8 @@ import { haloGeo, haloMat, nebulaGeo, nebulaMat } from './nebula.js';
 import { starGeo, starMat } from './stars.js';
 import { scatterGeo } from './scatter.js';
 import { hideLightning } from './lightning.js';
-import { loadAudioFile, updateAudioGain } from './audio.js';
+import { loadAudioFile, updateAudioGain, clearAudioLoop } from './audio.js';
+import { openLoopPopup } from './loop.js';
 
 // ── Helper: build a button-grid replacing a <select> ──
 function enhanceSelectAsButtonGrid(selectId, valueId) {
@@ -72,6 +73,7 @@ function setupSectionToggle(toggleRowId, bodyId, arrowId, startCollapsed = false
 // ── Audio ──
 const loadBtn      = document.getElementById('load-btn');
 const playBtn      = document.getElementById('play-btn');
+const loopBtn      = document.getElementById('loop-btn');
 const audioNameEl  = document.getElementById('audio-name');
 const volumeSlider = document.getElementById('volume-slider');
 const volumeValue  = document.getElementById('volume-value');
@@ -117,12 +119,24 @@ playBtn.addEventListener('click', async () => {
         playBtn.className   = 'play';
     } else {
         if (state.audioContext.state === 'suspended') await state.audioContext.resume();
+        // Respect loop region if active
+        if (state.loopEnabled && state.audioElement.currentTime >= state.loopEnd) {
+            state.audioElement.currentTime = state.loopStart;
+        }
         await state.audioElement.play();
         state.isPlaying = true;
         playBtn.textContent = '⏸ Pause';
         playBtn.className   = 'pause';
     }
 });
+
+// ── Loop button ──
+if (loopBtn) {
+    loopBtn.addEventListener('click', () => {
+        if (!state.audioFile) return;
+        openLoopPopup();
+    });
+}
 
 // ── Progress bar scrubbing ──
 const progressBar = document.getElementById('progress-bar');
@@ -150,7 +164,7 @@ document.getElementById('galaxy-stars-slider').addEventListener('input', (e) => 
     document.getElementById('galaxy-stars-value').textContent = e.target.value + '%';
     updateGalaxyDrawRange();
 });
-const visualModeSelect = document.getElementById('visual-mode-select');
+
 function applyCurrentPerformanceCounts() {
     updateGalaxyDrawRange();
     starGeo.setDrawRange(0, state.activeStarCount);
@@ -158,26 +172,7 @@ function applyCurrentPerformanceCounts() {
     haloGeo.setDrawRange(0, state.activeHaloCount);
     nebulaGeo.setDrawRange(0, state.activeNebulaCount);
 }
-function syncVisualModeUI() {
-    const label = state.visualMode === '4k' ? '4K' : '1080p';
-    if (visualModeSelect) visualModeSelect.value = state.visualMode;
-    const liveValueEl = document.getElementById('visual-mode-value');
-    if (liveValueEl) liveValueEl.textContent = label;
-    const captureModeSelect = document.getElementById('record-resolution-select');
-    if (captureModeSelect) {
-        captureModeSelect.value = state.visualMode;
-        captureModeSelect.disabled = true;
-    }
-    const captureValueEl = document.getElementById('record-resolution-value');
-    if (captureValueEl) captureValueEl.textContent = label;
-    window.dispatchEvent(new Event('galaxy-visual-mode-change'));
-}
-if (visualModeSelect) visualModeSelect.addEventListener('change', (e) => {
-    state.visualMode = e.target.value === '4k' ? '4k' : '1080p';
-    syncVisualModeUI();
-    applyPerformancePreset(state.performancePreset, { applyPerformanceCounts: applyCurrentPerformanceCounts });
-});
-syncVisualModeUI();
+
 document.getElementById('galaxy-scale-slider').addEventListener('input', (e) => {
     state.galaxyScaleFactor = e.target.value / 100;
     document.getElementById('galaxy-scale-value').textContent = e.target.value + '%';
@@ -407,7 +402,7 @@ document.getElementById('cinema-auto-advance').addEventListener('change', (e) =>
 });
 
 // ── Preset manager ──
-const PRESET_COUNT  = 4;
+const PRESET_COUNT   = 4;
 const presetStatusEl = document.getElementById('preset-status');
 
 function gatherState() {
@@ -416,7 +411,6 @@ function gatherState() {
         muted: state.isMuted,
         reactivity: document.getElementById('reactivity-slider').value,
         galaxyStars: document.getElementById('galaxy-stars-slider').value,
-        visualMode: state.visualMode,
         autoRotate: autoRotateToggle.checked,
         autoRotateSpeed: document.getElementById('auto-rotate-speed-slider').value,
         galaxyScale: document.getElementById('galaxy-scale-slider').value,
@@ -460,10 +454,6 @@ function applyStateSnapshot(s) {
     state.isMuted = !!s.muted; syncMuteUI(); updateAudioGain();
     setSlider('reactivity-slider', s.reactivity);
     setSlider('galaxy-stars-slider', s.galaxyStars);
-    if (s.visualMode) {
-        state.visualMode = s.visualMode === '4k' ? '4k' : '1080p';
-        syncVisualModeUI();
-    }
     setSlider('auto-rotate-speed-slider', s.autoRotateSpeed);
     setSlider('galaxy-scale-slider', s.galaxyScale);
     setSlider('galaxy-core-size-slider', s.galaxyCoreSize);
@@ -637,16 +627,15 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     state.beamLengthMultiplier = 1.5;
     document.getElementById('beam-length-slider').value = 150;
     document.getElementById('beam-length-value').textContent = '150%';
-    state.visualMode = '1080p';
-    if (visualModeSelect) visualModeSelect.value = '1080p';
-    syncVisualModeUI();
+
+    clearAudioLoop();
+    if (loopBtn) { loopBtn.textContent = '⌁ Loop'; loopBtn.classList.remove('loop-active'); }
+
     performancePresetSelect.value = 'quality';
     performancePresetSelect.dispatchEvent(new Event('change'));
     cameraPresetSelect.value = 'threeQuarter';
     cameraPresetSelect.dispatchEvent(new Event('change'));
-    document.getElementById('frame-size-select').value = 'current';
-    document.getElementById('frame-size-value').textContent = 'Current';
-    captureStatus.textContent = 'Idle';
+    if (captureStatus) captureStatus.textContent = 'Idle';
     syncAutoRotateUI();
 
     state.galaxyScaleFactor = 1.0;
@@ -785,9 +774,7 @@ setupSectionToggle('keyboard-toggle-row', 'keyboard-body', 'keyboard-arrow', tru
 
 // ── Button grids for selects ──
 enhanceSelectAsButtonGrid('performance-preset-select', 'performance-preset-value');
-enhanceSelectAsButtonGrid('visual-mode-select',        'visual-mode-value');
 enhanceSelectAsButtonGrid('camera-preset-select',      'camera-preset-value');
-enhanceSelectAsButtonGrid('frame-size-select',         'frame-size-value');
 enhanceSelectAsButtonGrid('galaxy-type-select',        'galaxy-type-value');
 enhanceSelectAsButtonGrid('cinema-path-select',        'cinema-path-value');
 enhanceSelectAsButtonGrid('cmap-distribution-select',  'cmap-distribution-value');
