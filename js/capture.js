@@ -221,7 +221,8 @@ function ensureRenderProgressOverlay() {
     renderProgressCancelBtn.addEventListener('click', async () => {
         if (!state.isRecording) return;
         renderProgressCancelBtn.disabled = true;
-        await stopMP4Export(true);
+        if (isPngSequence) await stopPngSequenceExport(true);
+        else               await stopMP4Export(true);
     });
 }
 
@@ -713,7 +714,7 @@ async function stopMP4Export(cancelled = false) {
         mp4Video = null;
         mp4Muxer = null;
         destroyRecordingPipeline();
-        recordBtn.textContent = 'Record';
+        recordBtn.textContent = 'Export';
         hideRenderProgressOverlay();
         exportRange = null;
         stopRequested = false;
@@ -857,7 +858,10 @@ export async function startPngSequenceExport() {
         if (!ok) return;
     }
 
-    exportEstimatedBytes = targetFrames * preset.width * preset.height * 3;
+    // PNG compresses dark/sparse content heavily — use ~10:1 ratio for space imagery
+    // rather than raw pixel bytes, which overstates by ~10x
+    const bytesPerFrame = (preset.width * preset.height * 3) / 10;
+    exportEstimatedBytes = targetFrames * bytesPerFrame;
     pngFrames        = [];
     pngFrameCount    = 0;
     pngPendingWrites = 0;
