@@ -96,6 +96,7 @@ export const GALAXY_TYPES = {
     core:       { armCount: -1, armTwist: 0.50, label: 'Eye'                },
     open:       { armCount: 2,  armTwist: 0.78, label: 'Open Spiral'        },
     pinwheel:   { armCount: 3,  armTwist: 1.42, label: 'Pinwheel'           },
+    anemic:     { armCount: 2,  armTwist: 0.92, label: 'Anemic Spiral'      },
     polarring:  { armCount: -1, armTwist: 0.00, label: 'Polar Ring'         },
     tight:      { armCount: 2,  armTwist: 2.25, label: 'Tight Spiral'       },
 };

@@ -14,17 +14,18 @@ scatterGeo.setAttribute('position', new THREE.BufferAttribute(scatterPosBuf, 3))
 scatterGeo.setAttribute('aColor',   new THREE.BufferAttribute(scatterColBuf, 3));
 scatterGeo.setAttribute('aAlpha',   new THREE.BufferAttribute(scatterAlphaBuf, 1));
 
-const scatterMat = new THREE.ShaderMaterial({
-    uniforms: { pointTexture: { value: circleTexture } },
+export const scatterMat = new THREE.ShaderMaterial({
+    uniforms: { pointTexture: { value: circleTexture }, uPointScale: { value: 1.0 } },
     vertexShader: `
         attribute vec3  aColor;
         attribute float aAlpha;
         varying   vec3  vColor;
         varying   float vAlpha;
+        uniform   float uPointScale;
         void main() {
             vColor = aColor; vAlpha = aAlpha;
             vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-            gl_PointSize = 1.0;
+            gl_PointSize = 1.0 * uPointScale;
             gl_Position  = projectionMatrix * mvPos;
         }
     `,

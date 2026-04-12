@@ -181,7 +181,6 @@ function wirePopupEvents(overlay) {
     // Close
     $('popup-close-btn').addEventListener('click', closePopup);
     $('popup-cancel-btn').addEventListener('click', closePopup);
-    overlay.addEventListener('click', e => { if (e.target === overlay) closePopup(); });
 
     // Clear loop
     $('popup-clear-btn').addEventListener('click', () => {
@@ -700,7 +699,11 @@ function syncBarsLimit($) {
 function updateLoopEnd($) {
     if (!popupBuffer || popupBpm <= 0) return;
     syncBarsLimit($);
-    popupLoopEnd = Math.min(popupLoopStart + getLoopBarDuration() * popupLoopBars, popupBuffer.duration);
+    const desiredDuration = Math.min(getLoopBarDuration() * popupLoopBars, popupBuffer.duration);
+    if (popupLoopStart + desiredDuration > popupBuffer.duration) {
+        popupLoopStart = Math.max(0, popupBuffer.duration - desiredDuration);
+    }
+    popupLoopEnd = Math.min(popupLoopStart + desiredDuration, popupBuffer.duration);
 }
 
 function applyLoopChange($) {

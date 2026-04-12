@@ -62,6 +62,7 @@ export const starMat = new THREE.ShaderMaterial({
         pointTexture:    { value: circleTexture },
         uAudioInfluence: { value: 0.75 },
         uTime:           { value: 0.0 },
+        uPointScale:     { value: 1.0 },
     },
     vertexShader: `
         attribute float aSize;
@@ -71,6 +72,7 @@ export const starMat = new THREE.ShaderMaterial({
         attribute float aSpike;
         uniform   float uAudioInfluence;
         uniform   float uTime;
+        uniform   float uPointScale;
         varying   vec3  vColor;
         varying   float vBright;
         varying   float vSpike;
@@ -96,7 +98,7 @@ export const starMat = new THREE.ShaderMaterial({
             vGlow   = aBright * twinkle;
 
             vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-            gl_PointSize = aSize * uAudioInfluence * (0.80 + twinkle * 0.55) * (390.0 / -mvPos.z);
+            gl_PointSize = aSize * uPointScale * uAudioInfluence * (0.80 + twinkle * 0.55) * (390.0 / -mvPos.z);
             gl_Position  = projectionMatrix * mvPos;
         }
     `,

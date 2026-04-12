@@ -78,6 +78,10 @@
                                 <option value="grand">Grand Design Spiral</option>
                                 <option value="flocculent">Flocculent Spiral</option>
                                 <option value="multiarm">Multi-Arm Spiral</option>
+                                <option value="open">Open Spiral</option>
+                                <option value="pinwheel">Pinwheel Spiral</option>
+                                <option value="tight">Tight Spiral</option>
+                                <option value="anemic">Anemic Spiral</option>
                                 <option value="ring">Ring Galaxy</option>
                                 <option value="lenticular">Lenticular (S0)</option>
                                 <option value="elliptical">Elliptical</option>
@@ -356,6 +360,13 @@
                         </select>
                     </div>
                     <div class="slider-container">
+                        <div class="slider-label"><span>Frame Rate</span><span class="slider-value" id="record-fps-value">60 fps</span></div>
+                        <select id="record-fps-select" class="capture-select">
+                            <option value="30">30 fps</option>
+                            <option value="60" selected>60 fps</option>
+                        </select>
+                    </div>
+                    <div class="slider-container">
                         <div class="slider-label"><span>Range</span><span class="slider-value" id="record-range-value">Full Audio</span></div>
                         <label class="capture-check-row" for="record-loop-only-toggle">
                             <input type="checkbox" id="record-loop-only-toggle" class="capture-check-input">
@@ -383,7 +394,7 @@
                         <button id="frame-btn" class="secondary-btn">Save Frame</button>
                     </div>
                     <div class="status-line" id="capture-status">Idle</div>
-                    <div class="mini-note" id="capture-note">4K MP4: Chrome/Edge · H.264 · auto-stops at end</div>
+                    <div class="mini-note" id="capture-note">1080p MP4 · 60 fps: Chrome/Edge · H.264 · auto-stops at end</div>
                 </div>
             </div>
 

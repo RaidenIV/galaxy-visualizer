@@ -11,6 +11,7 @@ const haloVertShader = `
     attribute float aAlpha;
     attribute float aSize;
     uniform   float uBrightness;
+    uniform   float uPointScale;
     varying   vec3  vColor;
     varying   float vAlpha;
     void main() {
@@ -19,7 +20,7 @@ const haloVertShader = `
         float viewDist = -mvPos.z;
         float depthBoost = clamp(1.22 - viewDist * 0.045, 0.68, 1.22);
         vAlpha = aAlpha * depthBoost;
-        gl_PointSize = aSize * (350.0 / max(0.001, viewDist));
+        gl_PointSize = aSize * uPointScale * (350.0 / max(0.001, viewDist));
         gl_Position  = projectionMatrix * mvPos;
     }
 `;

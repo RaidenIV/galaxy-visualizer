@@ -46,6 +46,7 @@ const galaxyVertShader = `
     attribute float aAlpha;
     attribute float aSize;
     uniform   float uBrightness;
+    uniform   float uPointScale;
     varying   vec3  vColor;
     varying   float vAlpha;
     void main() {
@@ -54,7 +55,7 @@ const galaxyVertShader = `
         float viewDist = -mvPos.z;
         float depthBoost = clamp(1.22 - viewDist * 0.045, 0.68, 1.22);
         vAlpha = aAlpha * depthBoost;
-        gl_PointSize = aSize * (350.0 / max(0.001, viewDist));
+        gl_PointSize = aSize * uPointScale * (350.0 / max(0.001, viewDist));
         gl_Position  = projectionMatrix * mvPos;
     }
 `;
@@ -70,7 +71,7 @@ const galaxyFragShader = `
 `;
 
 export const galaxyMat = new THREE.ShaderMaterial({
-    uniforms: { pointTexture: { value: circleTexture }, uBrightness: { value: 1.0 } },
+    uniforms: { pointTexture: { value: circleTexture }, uBrightness: { value: 1.0 }, uPointScale: { value: 1.0 } },
     vertexShader: galaxyVertShader,
     fragmentShader: galaxyFragShader,
     transparent: true,
@@ -427,6 +428,7 @@ export function buildGalaxy(armCount, armTwist, typeKey) {
         open:       { armStrength: 0.24, armPow: 1.35, bulgeFrac: 0.15, dustStr: 0.30, vertMul: 1.10, hasBar: false, clumpMix: 0.24 },
         pinwheel:   { armStrength: 0.34, armPow: 3.0,  bulgeFrac: 0.17, dustStr: 0.54, vertMul: 0.92, hasBar: false, clumpMix: 0.10 },
         tight:      { armStrength: 0.42, armPow: 4.2,  bulgeFrac: 0.21, dustStr: 0.62, vertMul: 0.76, hasBar: false, clumpMix: 0.08 },
+        anemic:     { armStrength: 0.10, armPow: 1.1,  bulgeFrac: 0.16, dustStr: 0.16, vertMul: 0.98, hasBar: false, clumpMix: 0.18 },
     };
     const tp = typeParams[type] || typeParams.barred;
     const nArms = Math.max(1, armCount);

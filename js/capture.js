@@ -8,6 +8,10 @@ import { state } from './state.js';
 import { camera, bloomPass, scene } from './renderer.js';
 import { BLOOM_LAYER } from './constants.js';
 import { suspendAudioLoopEnforcement } from './audio.js';
+import { galaxyMat } from './galaxy.js';
+import { starMat } from './stars.js';
+import { haloMat, nebulaMat } from './nebula.js';
+import { scatterMat } from './scatter.js';
 
 const captureStatus = document.getElementById('capture-status');
 const recordBtn = document.getElementById('record-btn');
@@ -18,6 +22,8 @@ const bitrateRow = document.getElementById('record-bitrate-row');
 const loopOnlyToggle = document.getElementById('record-loop-only-toggle');
 const formatValue = document.getElementById('record-format-value');
 const bitrateValue = document.getElementById('record-bitrate-value');
+const fpsSelect = document.getElementById('record-fps-select');
+const fpsValue = document.getElementById('record-fps-value');
 const rangeValue = document.getElementById('record-range-value');
 const captureNote = document.getElementById('capture-note');
 const resolutionNote = document.getElementById('capture-resolution-note');
@@ -54,6 +60,9 @@ let audioTsUs = 0;
 let mp4FrameCount = 0;
 let mp4StartTime = null;
 let mp4LastTime = null;
+let mp4FrameRate = 60;
+let mp4FrameDurationUs = Math.round(1_000_000 / 60);
+let mp4NextFrameDueMs = null;
 let stopRequested = false;
 let exportRange = null;
 let exportCancelled = false;
@@ -70,9 +79,25 @@ function getSelectedPreset() {
     return EXPORT_PRESETS[formatSelect?.value] || EXPORT_PRESETS.mp4_4k;
 }
 
+function getSelectedFps() {
+    return Math.max(1, parseInt(fpsSelect?.value || '60', 10) || 60);
+}
+
+function getExportPointScale(width, height) {
+    return Math.max(1, Math.sqrt((width * height) / (1920 * 1080)));
+}
+
+function setExportPointScale(scale = 1) {
+    const mats = [galaxyMat, starMat, haloMat, nebulaMat, scatterMat];
+    for (const mat of mats) {
+        if (mat?.uniforms?.uPointScale) mat.uniforms.uPointScale.value = scale;
+    }
+}
+
 function buildRecordingPipeline(width, height) {
     recWidth = width;
     recHeight = height;
+    setExportPointScale(getExportPointScale(width, height));
     recCanvas = document.createElement('canvas');
     recCanvas.width = width;
     recCanvas.height = height;
@@ -109,6 +134,7 @@ function buildRecordingPipeline(width, height) {
 }
 
 function destroyRecordingPipeline() {
+    setExportPointScale(1);
     if (recRenderer) recRenderer.dispose();
     recCanvas = null;
     recRenderer = null;
@@ -246,9 +272,11 @@ function syncRangeUI() {
 
 function syncFormatUI() {
     const preset = getSelectedPreset();
+    const fps = getSelectedFps();
     if (formatValue) formatValue.textContent = preset.label;
     if (bitrateValue && bitrateSelect) bitrateValue.textContent = `${bitrateSelect.value} Mbps`;
-    if (captureNote) captureNote.textContent = `${preset.label}: Chrome/Edge · H.264 · auto-stops at end`;
+    if (fpsValue) fpsValue.textContent = `${fps} fps`;
+    if (captureNote) captureNote.textContent = `${preset.label} · ${fps} fps: Chrome/Edge · H.264 · auto-stops at end`;
     if (bitrateRow) bitrateRow.style.display = '';
     syncRangeUI();
 }
@@ -267,13 +295,16 @@ async function startMP4Export() {
     const bitrateMbps = bitrateSelect ? parseInt(bitrateSelect.value, 10) : 16;
     const bitrate = bitrateMbps * 1_000_000;
     const codec = pickAvcCodec();
+    mp4FrameRate = getSelectedFps();
+    mp4FrameDurationUs = Math.round(1_000_000 / mp4FrameRate);
+    mp4NextFrameDueMs = null;
 
     const vOk = await VideoEncoder.isConfigSupported({
         codec,
         width: preset.width,
         height: preset.height,
         bitrate,
-        framerate: 60,
+        framerate: mp4FrameRate,
     });
     if (!vOk.supported) {
         captureStatus.textContent = `${preset.label} is not supported in this browser.`;
@@ -311,13 +342,14 @@ async function startMP4Export() {
         output: (chunk, meta) => mp4Muxer.addVideoChunk(chunk, meta),
         error: (e) => { captureStatus.textContent = 'Video encode error: ' + e.message; stopMP4Export(true); },
     });
-    mp4Video.configure({ codec, width: preset.width, height: preset.height, bitrate, framerate: 60, latencyMode: 'quality' });
+    mp4Video.configure({ codec, width: preset.width, height: preset.height, bitrate, framerate: mp4FrameRate, latencyMode: 'quality' });
 
     if (aOk) await startAudioEncoding(sampleRate);
 
     mp4FrameCount = 0;
     mp4StartTime = null;
     mp4LastTime = null;
+    mp4NextFrameDueMs = null;
     isMP4Recording = true;
     state.isRecording = true;
 
@@ -385,24 +417,28 @@ export function captureFrame(now) {
         if (mp4StartTime === null) {
             mp4StartTime = now;
             mp4LastTime = now;
+            mp4NextFrameDueMs = now;
         }
-        const timestampUs = Math.round((now - mp4StartTime) * 1000);
-        const durationUs = Math.max(1, Math.round((now - mp4LastTime) * 1000));
-        mp4LastTime = now;
-        let frame;
-        try {
-            frame = new VideoFrame(recCanvas, { timestamp: timestampUs, duration: durationUs });
-        } catch (_) {
-            return;
+        if (mp4NextFrameDueMs !== null && now + 0.25 >= mp4NextFrameDueMs) {
+            const timestampUs = mp4FrameCount * mp4FrameDurationUs;
+            let frame;
+            try {
+                frame = new VideoFrame(recCanvas, { timestamp: timestampUs, duration: mp4FrameDurationUs });
+            } catch (_) {
+                return;
+            }
+            mp4Video.encode(frame, { keyFrame: mp4FrameCount % mp4FrameRate === 0 });
+            frame.close();
+            mp4FrameCount++;
+            do {
+                mp4NextFrameDueMs += 1000 / mp4FrameRate;
+            } while (mp4NextFrameDueMs <= now - 0.25);
         }
-        mp4Video.encode(frame, { keyFrame: mp4FrameCount % 60 === 0 });
-        frame.close();
-        mp4FrameCount++;
     }
 
     if (!stopRequested && exportRange && state.audioElement) {
         const t = state.audioElement.currentTime;
-        if (t >= exportRange.end - (1 / 120) || state.audioElement.ended) {
+        if (t >= exportRange.end - (1 / Math.max(120, mp4FrameRate * 2)) || state.audioElement.ended) {
             stopRequested = true;
             queueMicrotask(() => stopMP4Export(false));
         }
@@ -430,6 +466,7 @@ frameBtn.addEventListener('click', async () => {
 
 formatSelect?.addEventListener('change', syncFormatUI);
 bitrateSelect?.addEventListener('change', syncFormatUI);
+fpsSelect?.addEventListener('change', syncFormatUI);
 loopOnlyToggle?.addEventListener('change', syncRangeUI);
 frameSizeSelect?.addEventListener('change', syncFrameUI);
 frameOrientationSelect?.addEventListener('change', syncFrameUI);
