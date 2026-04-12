@@ -180,6 +180,7 @@ function ensureRenderProgressOverlay() {
         font-size: 13px;
         font-weight: 600;
         transition: background 0.18s ease, transform 0.18s ease;
+        width: 50%;
     }
     .render-progress-cancel:hover { background: rgba(255,255,255,0.12); transform: translateY(-1px); }
     .render-progress-cancel:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
@@ -381,7 +382,8 @@ function destroyRecordingPipeline() {
 
 function renderOffscreen() {
     if (!recCanvas) return;
-    recBloomPass.strength = bloomPass.strength;
+    const is4K = recWidth >= 3840;
+    recBloomPass.strength = bloomPass.strength * (is4K ? 2.0 : 1.0);
     recBloomPass.radius = bloomPass.radius;
     recBloomPass.threshold = bloomPass.threshold;
 
