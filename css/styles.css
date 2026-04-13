@@ -571,3 +571,34 @@ html:-webkit-full-screen #canvas {
     .loop-ctrl-block + .loop-ctrl-block { border-left: none; border-top: 1px solid rgba(255,255,255,0.06); }
     .loop-bpm-block { align-items: flex-start; }
 }
+
+        /* ── Export type toggle (MP4 / PNG) and loop-only checkbox ── */
+        .capture-check-row {
+            display: flex; align-items: center; justify-content: center; gap: 7px;
+            padding: 10px 8px; border-radius: 8px; width: 100%;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            cursor: pointer; user-select: none;
+            transition: background 0.18s, border-color 0.18s;
+            box-sizing: border-box;
+        }
+        .capture-check-row:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.22); }
+        .capture-check-input { display: none; }
+        .capture-check-box {
+            width: 14px; height: 14px; flex-shrink: 0; box-sizing: border-box;
+            border-radius: 50%; border: 2px solid rgba(255,255,255,0.28);
+            transition: background 0.18s, border-color 0.18s;
+        }
+        .capture-check-input:checked + .capture-check-box {
+            background: #3b82f6; border-color: #3b82f6;
+        }
+        .capture-check-text {
+            font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.55);
+            transition: color 0.18s;
+        }
+        .capture-check-input:checked ~ .capture-check-text { color: #fff; }
+        /* Active-state container highlight — Chrome 105+, Firefox 121+, Safari 15.4+ */
+        .capture-check-row:has(.capture-check-input:checked) {
+            background: rgba(59,130,246,0.18);
+            border-color: rgba(59,130,246,0.55);
+        }
