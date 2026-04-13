@@ -424,6 +424,12 @@ function _buildGalaxyNow(armCount, armTwist, typeKey) {
             galaxyOuterCool[i]    = Math.pow(saturate((rn2 - 0.68) / 0.32), 1.15);
             galaxyNebulaWeight[i] = lum * innerCrowd * (0.25 + 0.35 * (1.0 - rn2));
 
+            // ── Size & alpha (missing from original pass 2 — caused all Eye particles to be invisible) ──
+            let sr2 = Math.exp((Math.random() * 2.0 - 1.0) * 0.78);
+            if (Math.random() < 0.016) sr2 *= 2.2 + Math.random() * 2.5;
+            galaxySizeScale[i]  = Math.max(0.35, Math.min(4.8, sr2 * (0.75 + lum * 0.52 + bulge * 0.95)));
+            galaxyAlphaScale[i] = saturate(0.12 + 0.40 * lum * innerCrowd + 0.42 * bulge + 0.10 * (1.0 - rn2));
+
             galaxyPositionsBuf[i*3]   = gx[i];
             galaxyPositionsBuf[i*3+1] = gy[i];
             galaxyPositionsBuf[i*3+2] = gz[i];
