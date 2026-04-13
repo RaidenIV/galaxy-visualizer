@@ -246,7 +246,8 @@ function updateRenderProgressOverlay(progress, currentTime, endTime, subText = '
         renderProgressSub.textContent = `${subText} · Est. ${formatBytes(exportEstimatedBytes)}`;
         return;
     }
-    renderProgressSub.textContent = `${formatClock(currentTime)} / ${formatClock(endTime)} · Est. ${formatBytes(exportEstimatedBytes)}`;
+    const display = getProgressDisplayTimes(currentTime, endTime);
+    renderProgressSub.textContent = `${formatClock(display.current)} / ${formatClock(display.total)} · Est. ${formatBytes(exportEstimatedBytes)}`;
 }
 
 function hideRenderProgressOverlay() {
@@ -260,6 +261,46 @@ function formatClock(seconds) {
     const mins = Math.floor(safe / 60);
     const secs = safe - mins * 60;
     return `${mins}:${secs.toFixed(2).padStart(5, '0')}`;
+}
+
+function getProgressDisplayTimes(currentTime, endTime) {
+    if (exportRange) {
+        const total = Math.max(0, (exportRange.end ?? endTime ?? 0) - (exportRange.start ?? 0));
+        const current = Math.max(0, Math.min(total, (currentTime ?? exportRange.start ?? 0) - (exportRange.start ?? 0)));
+        return { current, total };
+    }
+    return {
+        current: Math.max(0, Number.isFinite(currentTime) ? currentTime : 0),
+        total: Math.max(0, Number.isFinite(endTime) ? endTime : 0),
+    };
+}
+
+async function canvasToPngBlob(canvas) {
+    return await new Promise((resolve, reject) => {
+        const finish = (blob) => {
+            if (blob) {
+                resolve(blob);
+                return;
+            }
+            try {
+                const dataUrl = canvas.toDataURL('image/png');
+                const base64 = dataUrl.split(',')[1] || '';
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                resolve(new Blob([bytes], { type: 'image/png' }));
+            } catch (err) {
+                reject(err);
+            }
+        };
+
+        try {
+            if (canvas?.toBlob) canvas.toBlob(finish, 'image/png');
+            else finish(null);
+        } catch (err) {
+            reject(err);
+        }
+    });
 }
 
 function formatBytes(bytes) {
@@ -445,24 +486,9 @@ async function exportFrame() {
     buildRecordingPipeline(preset.width, preset.height);
     try {
         renderOffscreen();
-        await new Promise((resolve) => {
-            const name = `galaxy_frame_${preset.label.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.png`;
-            const finish = (blob) => {
-                if (!blob) {
-                    const a = document.createElement('a');
-                    a.href = recCanvas.toDataURL('image/png');
-                    a.download = name;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                } else {
-                    downloadBlob(blob, name);
-                }
-                resolve();
-            };
-            if (recCanvas.toBlob) recCanvas.toBlob(finish, 'image/png');
-            else finish(null);
-        });
+        const name = `galaxy_frame_${preset.label.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.png`;
+        const blob = await canvasToPngBlob(recCanvas);
+        downloadBlob(blob, name);
     } finally {
         destroyRecordingPipeline();
     }
@@ -768,29 +794,43 @@ export function captureFrame(now) {
         const expectedFrame = Math.min(totalFrames - 1, Math.floor(audioSec * mp4FrameRate));
         // Number of slots to fill: at least 1, up to however many audio has advanced past
         const slotsToFill = Math.max(1, expectedFrame - pngFrameCount + 1);
-
+        const frameNames = [];
         for (let s = 0; s < slotsToFill; s++) {
             const frameNum = (pngFrameCount + s).toString().padStart(6, '0');
-            const name = `frame_${frameNum}.png`;
-            pngPendingWrites++;
-            // All slotsToFill calls read the same canvas state → identical images,
-            // which is correct: the GPU rendered one frame, we duplicate it to fill
-            // the elapsed time at the target frame rate.
-            recCanvas.toBlob(async (blob) => {
-                try {
-                    if (pngDirHandle) {
+            frameNames.push(`frame_${frameNum}.png`);
+        }
+        pngFrameCount += slotsToFill;
+
+        // Encode the rendered canvas once, then reuse the same PNG payload for any
+        // duplicate frame slots that need to be filled. This is both faster and more
+        // reliable than launching a separate toBlob() for every duplicated frame.
+        pngPendingWrites++;
+        (async () => {
+            try {
+                const blob = await canvasToPngBlob(recCanvas);
+                if (pngDirHandle) {
+                    for (const name of frameNames) {
                         const fh = await pngDirHandle.getFileHandle(name, { create: true });
                         const wr = await fh.createWritable();
                         await wr.write(blob);
                         await wr.close();
-                    } else {
-                        const data = new Uint8Array(await blob.arrayBuffer());
-                        pngFrames.push({ name, data });
                     }
-                } catch (_) {} finally { pngPendingWrites--; }
-            }, 'image/png');
-        }
-        pngFrameCount += slotsToFill;
+                } else {
+                    const data = new Uint8Array(await blob.arrayBuffer());
+                    for (const name of frameNames) {
+                        pngFrames.push({ name, data: data.slice() });
+                    }
+                }
+            } catch (err) {
+                captureStatus.textContent = 'PNG sequence export failed: ' + (err?.message || err);
+                if (!stopRequested) {
+                    stopRequested = true;
+                    queueMicrotask(() => stopPngSequenceExport(true));
+                }
+            } finally {
+                pngPendingWrites--;
+            }
+        })();
 
         if (exportRange && state.audioElement) {
             const t = Math.max(exportRange.start, Math.min(exportRange.end, state.audioElement.currentTime));
@@ -963,6 +1003,7 @@ async function stopPngSequenceExport(cancelled = false) {
                 captureStatus.textContent = `Compressing ${pngFrames.length} frames…`;
                 const { zipSync } = await loadFflate();
                 const fileMap = {};
+                pngFrames.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
                 for (const { name, data } of pngFrames) fileMap[name] = [data, { level: 0 }];
                 const zipped  = zipSync(fileMap);
                 const zipBlob = new Blob([zipped], { type: 'application/zip' });

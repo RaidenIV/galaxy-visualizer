@@ -8,7 +8,7 @@ export const BASE_SCATTER_COUNT = 10000;
 export const BASE_HALO_COUNT    = 12000;
 export const BASE_NEBULA_COUNT  = 4500;
 
-export const N_GALAXY  = BASE_GALAXY_COUNT;
+export const N_GALAXY  = BASE_GALAXY_COUNT * 2;
 export const N_STARS   = BASE_STAR_COUNT;
 export const N_SCATTER = BASE_SCATTER_COUNT;
 export const N_HALO    = BASE_HALO_COUNT;

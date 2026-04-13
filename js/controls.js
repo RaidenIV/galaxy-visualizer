@@ -159,6 +159,22 @@ document.getElementById('reactivity-slider').addEventListener('input', (e) => {
     state.reactivityMultiplier = e.target.value / 100;
     document.getElementById('reactivity-value').textContent = e.target.value + '%';
 });
+function renameGalaxyStarsControl() {
+    const slider = document.getElementById('galaxy-stars-slider');
+    if (!slider) return;
+
+    const candidates = [];
+    const primaryRow = slider.closest('.setting-row, .control-row, .slider-row, .row, .setting-group, .control-group');
+    if (primaryRow) candidates.push(...primaryRow.querySelectorAll('label, .setting-label, .control-label, .slider-label, .section-label, span'));
+    if (slider.parentElement) candidates.push(...slider.parentElement.querySelectorAll('label, .setting-label, .control-label, .slider-label, .section-label, span'));
+    if (slider.parentElement?.parentElement) candidates.push(...slider.parentElement.parentElement.querySelectorAll('label, .setting-label, .control-label, .slider-label, .section-label, span'));
+
+    const labelNode = candidates.find((el) => /galaxy\s*stars/i.test((el.textContent || '').trim()));
+    if (labelNode) labelNode.textContent = labelNode.textContent.replace(/galaxy\s*stars/ig, 'Amount of Stars');
+}
+
+renameGalaxyStarsControl();
+
 document.getElementById('galaxy-stars-slider').addEventListener('input', (e) => {
     state.galaxyStarAmountMultiplier = e.target.value / 100;
     document.getElementById('galaxy-stars-value').textContent = e.target.value + '%';
