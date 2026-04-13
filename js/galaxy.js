@@ -622,6 +622,11 @@ export function rotateGalaxyParticles(rotSpeed) {
     _buildGalaxyNow(state.galaxyArmCount, state.galaxyArmTwist, state.galaxyTypeKey);
     _builtOnce = true;
 
+    // Fade the galaxy in on first load using the same mechanism as type-switching
+    galaxyMat.uniforms.uMorphFade.value = 0.0;
+    _morphState = 'fadein';
+    _morphT     = 0;
+
     // Central sphere
     const sphereGeo = new THREE.SphereGeometry(0.09, 24, 24);
     const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
