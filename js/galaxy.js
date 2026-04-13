@@ -611,67 +611,9 @@ export function rotateGalaxyParticles(rotSpeed) {
 
 // ── Initial build ──
 {
-    let maxR = 0;
-    for (let i = 0; i < N_GALAXY; i++) {
-        gx[i] = gaussianRandom() + gaussianRandom(); gz[i] = gaussianRandom() + gaussianRandom(); gy[i] = gaussianRandom() + gaussianRandom();
-        galaxyRxy[i] = Math.sqrt(gx[i]*gx[i] + gz[i]*gz[i]); galaxyTheta[i] = Math.atan2(gz[i], gx[i]);
-        if (galaxyRxy[i] > maxR) maxR = galaxyRxy[i];
-    }
-    state.maxGalaxyRxy = maxR;
-    // Spiral arm pass
-    const nArms = 4, armTwist = 1.15, armStrength = 0.30, armPow = 2.2;
-    const bulgeFrac = 0.18, dustStr = 0.45, vertMul = 1.0, hasBar = true, clumpMix = 0.30;
-    let fmx = 0;
-    for (let i = 0; i < N_GALAXY; i++) {
-        const baseTheta = galaxyTheta[i], baseR = galaxyRxy[i];
-        let rNorm = saturate(baseR / (maxR + 1e-5));
-        const bulge = Math.exp(-Math.pow(rNorm / bulgeFrac, 2.0));
-        const discBlend = saturate(rNorm / 0.12) * (1.0 - bulge * 0.85);
-        const lanePhase = baseTheta - armTwist * Math.log(rNorm * 6.0 + 1.0);
-        const armGrad = Math.sin(nArms * lanePhase);
-        const thetaNudge = -armGrad * armStrength * discBlend;
-        const cosArmRaw = (1.0 + Math.cos(nArms * lanePhase)) * 0.5;
-        const armProfile = Math.pow(cosArmRaw, armPow);
-        const clumpA = 0.5 + 0.5 * Math.sin(baseTheta * (nArms * 2.1) + rNorm * 9.0 + (i % 97) * 0.13);
-        const clumpB = 0.5 + 0.5 * Math.sin(baseTheta * (nArms + 1.1) - rNorm * 6.5 + (i % 71) * 0.18);
-        const clump = 0.55 * clumpA + 0.45 * clumpB;
-        const combinedNudge = thetaNudge * (1.0 - clumpMix) + (clump - 0.5) * 0.18 * clumpMix * discBlend;
-        let barNudge = 0;
-        if (hasBar && rNorm < 0.30) {
-            const barBlend = saturate(1.0 - rNorm / 0.30) * discBlend;
-            let barDelta = ((baseTheta % Math.PI) + Math.PI) % Math.PI;
-            if (barDelta > Math.PI * 0.5) barDelta -= Math.PI;
-            barNudge = -barDelta * 0.70 * barBlend;
-        }
-        galaxyTheta[i] = baseTheta + combinedNudge + barNudge;
-        galaxyRxy[i] = baseR * (1.0 - armProfile * 0.06 * discBlend);
-        if (galaxyRxy[i] > fmx) fmx = galaxyRxy[i];
-        rNorm = saturate(galaxyRxy[i] / (maxR + 1e-5)); galaxyNormR[i] = rNorm;
-        const outerMask = saturate((rNorm - 0.55) / 0.45);
-        const flareBoost = 1.0 + GALAXY_OUTER_FLARE * Math.pow(outerMask, 1.6);
-        const verticalScale = (0.018 + 0.110 * Math.pow(rNorm, 1.32)) * flareBoost * vertMul;
-        gy[i] = gy[i] * verticalScale + maxR * 0.016 * Math.pow(outerMask, 1.75) * Math.sin(baseTheta * 1.55 + rNorm * 7.5);
-        const interArmDust = (1.0 - armProfile) * Math.exp(-Math.pow((rNorm - 0.28) / 0.20, 2.0));
-        const dustNoise = 0.65 + 0.35 * Math.sin(baseTheta * (nArms * 3.1) + rNorm * 12.0);
-        const dust = saturate(interArmDust * dustNoise * dustStr * (1.0 - bulge * 0.7));
-        galaxyDustWeight[i] = dust; galaxyWarmCore[i] = bulge;
-        galaxyArmGlow[i] = armProfile * (1.0 - clumpMix) + clump * clumpMix;
-        galaxyMidBlue[i] = Math.exp(-Math.pow((rNorm - 0.56) / 0.18, 2.0));
-        galaxyOuterCool[i] = Math.pow(saturate((rNorm - 0.70) / 0.30), 1.20);
-        galaxyNebulaWeight[i] = galaxyArmGlow[i] * Math.exp(-Math.pow((rNorm - 0.38) / 0.24, 2.0));
-        let sizeRand = Math.exp((Math.random() * 2.0 - 1.0) * 0.78);
-        if (Math.random() < 0.014) sizeRand *= 2.0 + Math.random() * 2.8;
-        galaxySizeScale[i] = Math.max(0.35, Math.min(4.8, sizeRand * (0.75 + galaxyArmGlow[i] * 0.52 + bulge * 0.95)));
-        galaxyAlphaScale[i] = saturate((0.14 + 0.35 * galaxyArmGlow[i] + 0.44 * bulge + 0.16 * (1.0 - rNorm)) * (1.0 - dust * 0.80));
-        gx[i] = galaxyRxy[i] * Math.cos(galaxyTheta[i]); gz[i] = galaxyRxy[i] * Math.sin(galaxyTheta[i]);
-        galaxyPositionsBuf[i*3] = gx[i]; galaxyPositionsBuf[i*3+1] = gy[i]; galaxyPositionsBuf[i*3+2] = gz[i];
-    }
-    state.maxGalaxyRxy = fmx;
-    rebuildGalaxyColors(getCurrentColorStops());
-    // Mark all per-particle GPU attributes dirty for first upload
-    ['position','aNormR','aWarmCore','aArmGlow','aDust','aMidBlue','aOuterCool','aAlpha','aSize']
-        .forEach(a => { if (galaxyGeo.attributes[a]) galaxyGeo.attributes[a].needsUpdate = true; });
-    galaxyGeo.setDrawRange(0, state.activeGalaxyCount);
+    // Build the same galaxy type that the app exposes as its default so startup
+    // does not briefly show one morphology and then morph to another a moment later.
+    _buildGalaxyNow(state.galaxyArmCount, state.galaxyArmTwist, state.galaxyTypeKey);
     _builtOnce = true;
 
     // Central sphere
